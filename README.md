@@ -45,8 +45,11 @@ The applications are launched as independent processes that do not depend on the
 
 ～使用方法～
 1,これをパワーシェルで実行.txtに書かれたコードをCodex_setup\で実行。
+
 2,セキュリティについて聞かれるので許可する
+
 3,環境構築完了を待つ間にお茶を飲む
+
 4,完了
 
 ～展開されるソフト～
