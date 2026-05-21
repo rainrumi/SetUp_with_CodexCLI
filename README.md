@@ -44,22 +44,35 @@ The applications are launched as independent processes that do not depend on the
 個人用に作成したものなので破壊的な改変をすることがあります。
 
 ～使用方法～
+
 1,これをパワーシェルで実行.txtに書かれたコードをCodex_setup\で実行。
+
 2,セキュリティについて聞かれるので許可する
+
 3,環境構築完了を待つ間にお茶を飲む
+
 4,完了
 
 ～展開されるソフト～
+
 CodexCLI
+
 Node.js
+
 VSCode
+
 Sourcetree
+
 Git
+
 Godot
+
 7zip
+
 いくつかのウェブページ（ChatGPT, Github, MicrosoftTeams, Discord）
 
 ～実行内容～
+
 これをパワーシェルで実行.txt に記載されたコマンドをPowerShellで実行すると、install_all.ps1 が一括セットアップ処理を開始しま
   す。-NoProfile によりユーザー固有のPowerShell設定を読み込まず、-ExecutionPolicy Bypass によりこの実行時だけスクリプト実行制限
   を回避します。-File .\install_all.ps1 でセットアップ本体を実行し、-Force を付けて確認処理を省略しながら処理を進めます。
