@@ -1,0 +1,88 @@
+{
+  "software": [
+    {
+      "id": "7zip",
+      "name": "7-Zip",
+      "fileName": "7z2602-x64.exe",
+      "expectedSha256": "",
+      "detectPaths": [
+        "C:\\Program Files\\7-Zip\\7z.exe",
+        "C:\\Program Files (x86)\\7-Zip\\7z.exe"
+      ],
+      "silentArgs": ["/S"]
+    },
+    {
+      "id": "godot",
+      "name": "Godot",
+      "fileName": "Godot_v4.6.2-stable_win64.exe",
+      "expectedSha256": "",
+      "destinationRelativePath": "Godot\\Godot_v4.6.2-stable_win64.exe",
+      "detectPaths": [
+        "C:\\Tools\\Godot\\Godot_v4.6.2-stable_win64.exe"
+      ]
+    },
+    {
+      "id": "node",
+      "name": "Node.js",
+      "fileName": "node-v24.15.0-x64.msi",
+      "expectedSha256": "",
+      "detectCommands": ["node.exe", "npm.cmd"],
+      "silentArgs": ["/qn", "/norestart"]
+    },
+    {
+      "id": "git",
+      "name": "Git for Windows",
+      "fileName": "Git-2.54.0-64-bit.exe",
+      "expectedSha256": "",
+      "detectCommands": ["git.exe"],
+      "detectPaths": [
+        "C:\\Program Files\\Git\\cmd\\git.exe",
+        "C:\\Program Files\\Git\\bin\\git.exe",
+        "C:\\Program Files (x86)\\Git\\cmd\\git.exe",
+        "C:\\Program Files (x86)\\Git\\bin\\git.exe"
+      ],
+      "silentArgs": ["/VERYSILENT", "/NORESTART", "/NOCANCEL", "/SP-"]
+    },
+    {
+      "id": "sourcetree",
+      "name": "Sourcetree Enterprise",
+      "fileName": "SourcetreeEnterpriseSetup_3.4.30.msi",
+      "expectedSha256": "",
+      "detectPaths": [
+        "C:\\Program Files\\Atlassian\\Sourcetree Enterprise\\SourceTree.exe",
+        "C:\\Program Files (x86)\\Atlassian\\Sourcetree Enterprise\\SourceTree.exe",
+        "C:\\Program Files\\Atlassian\\Sourcetree\\SourceTree.exe",
+        "C:\\Program Files (x86)\\Atlassian\\Sourcetree\\SourceTree.exe",
+        "C:\\Program Files\\SourceTree\\SourceTree.exe",
+        "C:\\Program Files (x86)\\SourceTree\\SourceTree.exe",
+        "%LOCALAPPDATA%\\SourceTree\\SourceTree.exe"
+      ],
+      "msiProperties": ["ACCEPTEULA=1"],
+      "silentArgs": ["/qn", "/norestart"]
+    },
+    {
+      "id": "vscode",
+      "name": "Visual Studio Code",
+      "fileName": "VSCodeUserSetup-x64-1.119.0.exe",
+      "expectedSha256": "",
+      "detectPaths": [
+        "%LOCALAPPDATA%\\Programs\\Microsoft VS Code\\Code.exe",
+        "C:\\Program Files\\Microsoft VS Code\\Code.exe",
+        "C:\\Program Files (x86)\\Microsoft VS Code\\Code.exe"
+      ],
+      "silentArgs": [
+        "/VERYSILENT",
+        "/NORESTART",
+        "/MERGETASKS=!runcode,addcontextmenufiles,addcontextmenufolders,addtopath"
+      ]
+    },
+    {
+      "id": "codex",
+      "name": "OpenAI Codex CLI",
+      "fileName": "",
+      "expectedSha256": "",
+      "detectCommands": ["codex.cmd", "codex"],
+      "installCommand": "npm i -g @openai/codex"
+    }
+  ]
+}

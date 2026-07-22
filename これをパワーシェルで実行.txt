@@ -1,0 +1,5 @@
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install_all.ps1 -Force
+
+
+ソースツリーのターミナルでこれやるとプッシュ時に自動でアカウント選ばれる
+git config --local credential.https://github.com.username "GitHubのユーザー名"
