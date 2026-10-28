@@ -3,8 +3,8 @@
     {
       "id": "7zip",
       "name": "7-Zip",
-      "fileName": "7z2602-x64.exe",
-      "expectedSha256": "",
+      "fileName": "7z2605-x64.exe",
+      "expectedSha256": "fd99e86f57d8f429ef5ed045bf98315af962e2309b0f1ba87a147a44c71647d0",
       "detectPaths": [
         "C:\\Program Files\\7-Zip\\7z.exe",
         "C:\\Program Files (x86)\\7-Zip\\7z.exe"
@@ -14,26 +14,26 @@
     {
       "id": "godot",
       "name": "Godot",
-      "fileName": "Godot_v4.6.2-stable_win64.exe",
-      "expectedSha256": "",
-      "destinationRelativePath": "Godot\\Godot_v4.6.2-stable_win64.exe",
+      "fileName": "Godot_v4.7.2-stable_win64.exe",
+      "expectedSha256": "ab1824f85bfd8e0e4128182c000c4003a3e042245b2967848d089b2a04b22424",
+      "destinationRelativePath": "Godot\\Godot_v4.7.2-stable_win64.exe",
       "detectPaths": [
-        "C:\\Tools\\Godot\\Godot_v4.6.2-stable_win64.exe"
+        "C:\\Tools\\Godot\\Godot_v4.7.2-stable_win64.exe"
       ]
     },
     {
       "id": "node",
       "name": "Node.js",
-      "fileName": "node-v24.15.0-x64.msi",
-      "expectedSha256": "",
+      "fileName": "node-v24.22.1-x64.msi",
+      "expectedSha256": "3bda4baf1ee709b33cf920dd633106ddb23951e322bff9c03ec9f64ab8981b01",
       "detectCommands": ["node.exe", "npm.cmd"],
       "silentArgs": ["/qn", "/norestart"]
     },
     {
       "id": "git",
       "name": "Git for Windows",
-      "fileName": "Git-2.54.0-64-bit.exe",
-      "expectedSha256": "",
+      "fileName": "Git-2.56.0.4-64-bit.exe",
+      "expectedSha256": "4961a4a8cc778d8b6e00a5819e5fe4d078b754555aff7aedc2d77a5d74c2de80",
       "detectCommands": ["git.exe"],
       "detectPaths": [
         "C:\\Program Files\\Git\\cmd\\git.exe",
@@ -46,8 +46,8 @@
     {
       "id": "sourcetree",
       "name": "Sourcetree Enterprise",
-      "fileName": "SourcetreeEnterpriseSetup_3.4.30.msi",
-      "expectedSha256": "",
+      "fileName": "SourcetreeEnterpriseSetup_3.4.32.msi",
+      "expectedSha256": "2dfeae7ab4ec6a11de12b65d2a59221d55bbb6be517dac39a493e34bac16e740",
       "detectPaths": [
         "C:\\Program Files\\Atlassian\\Sourcetree Enterprise\\SourceTree.exe",
         "C:\\Program Files (x86)\\Atlassian\\Sourcetree Enterprise\\SourceTree.exe",
@@ -63,8 +63,8 @@
     {
       "id": "vscode",
       "name": "Visual Studio Code",
-      "fileName": "VSCodeUserSetup-x64-1.119.0.exe",
-      "expectedSha256": "",
+      "fileName": "VSCodeUserSetup-x64-1.143.1.exe",
+      "expectedSha256": "7cb4c13a1b20c8bba749604a28198585fc45c64a01e5c819c300a42079696519",
       "detectPaths": [
         "%LOCALAPPDATA%\\Programs\\Microsoft VS Code\\Code.exe",
         "C:\\Program Files\\Microsoft VS Code\\Code.exe",
@@ -82,7 +82,7 @@
       "fileName": "",
       "expectedSha256": "",
       "detectCommands": ["codex.cmd", "codex"],
-      "installCommand": "npm i -g @openai/codex"
+      "installCommand": "npm i -g @openai/codex@latest"
     }
   ]
 }

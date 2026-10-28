@@ -3,3 +3,15 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install_all.ps1 -Force
 
 ソースツリーのターミナルでこれやるとプッシュ時に自動でアカウント選ばれる
 git config --local credential.https://github.com.username "GitHubのユーザー名"
+
+↓なんか入らないときはこれ
+npm uninstall -g @openai/codex
+
+npm cache verify
+
+npm install -g @openai/codex@latest --include=optional
+
+codex --version
+
+↓アドレス長いって怒られたときはこれ
+git config --global core.longpaths true

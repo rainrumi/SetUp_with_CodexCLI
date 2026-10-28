@@ -545,8 +545,8 @@ function Wait-GitInstallJob {
 function Install-SourcetreeEnterprise {
     $name = "Sourcetree Enterprise"
     $item = Get-SoftwareItem -Id "sourcetree"
-    if ($item.fileName -ne "SourcetreeEnterpriseSetup_3.4.30.msi") {
-        throw "Sourcetree Enterprise must use SourcetreeEnterpriseSetup_3.4.30.msi."
+    if ($item.fileName -notmatch '^SourcetreeEnterpriseSetup_\d+\.\d+\.\d+\.msi$') {
+        throw "Sourcetree Enterprise must use a versioned SourcetreeEnterpriseSetup MSI."
     }
 
     $installed = Test-AnyPath -Paths $item.detectPaths
@@ -672,11 +672,11 @@ function Install-CodexCli {
     }
 
     $codexLog = Join-Path $Script:LogDir "codex-install.log"
-    $installCommand = 'npm i -g @openai/codex 1>> "' + $codexLog + '" 2>>&1'
+    $installCommand = 'npm i -g @openai/codex@latest 1>> "' + $codexLog + '" 2>>&1'
     if ($DryRun) {
         Write-Log "DryRun: Codex CLI npm install will not be called." "DRYRUN"
         Write-Log "DryRun command: $installCommand" "DRYRUN"
-        Add-Result $name "DryRun" "Would run npm i -g @openai/codex"
+        Add-Result $name "DryRun" "Would run npm i -g @openai/codex@latest"
         return
     }
 
