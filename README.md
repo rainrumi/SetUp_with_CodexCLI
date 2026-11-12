@@ -2,11 +2,12 @@
 
 このフォルダは、同じフォルダに配置済みのインストーラーを使って Windows PC の開発ツールを一括セットアップするための PowerShell ツールです。
 
-インストーラー EXE/MSI はインターネットから自動取得しません。OpenAI Codex CLI だけは、Node.js 導入後に npm でグローバルインストールします。
+同梱のインストーラー EXE/MSI を使います。OpenAI Codex CLI は Node.js 導入後に npm で、ChatGPT デスクトップ版は `winget` で Microsoft Store からダウンロード・インストールします。
+
+ChatGPT デスクトップ版は、セットアップ後に自動起動します。インストール済みの場合は再インストールせず起動します。Chrome で ChatGPT を開く処理はありません。
 
 セットアップ処理の最後に、Google Chrome で次のタブを開きます。
 
-- `https://chatgpt.com/ja-JP/`
 - `https://github.co.jp/`
 - `https://www.microsoft.com/ja-jp/microsoft-teams/log-in`
 - `https://discord.com/`
@@ -24,8 +25,9 @@ Chrome が見つからない場合、タブは開かずログにスキップ理�
 | Sourcetree Enterprise | 3.4.32 | https://www.sourcetreeapp.com/enterprise |
 | Visual Studio Code | 1.143.1 | https://code.visualstudio.com/updates |
 | OpenAI Codex CLI | 実行時の npm latest | https://www.npmjs.com/package/@openai/codex |
+| ChatGPT デスクトップ版 | 実行時の Microsoft Store 配布版 | https://apps.microsoft.com/detail/9NT1R1C2HH7J |
 
-これらは確認時点の最新版です。次回以降も自動で新版を取得する仕組みではありません。
+同梱ファイルのバージョンは確認時点のものです。Codex CLI と ChatGPT を除き、次回以降も自動で新版を取得する仕組みではありません。
 既存のソフトはバージョンにかかわらずスキップされます。このキットの更新だけでは、この PC にインストール済みのソフトは更新されません。
 
 ## フォルダ構成
@@ -69,7 +71,7 @@ C:\Tools\Godot\Godot_v4.7.2-stable_win64.exe
 
 ## DryRun
 
-実際のインストール、Godot コピー、ExecutionPolicy 変更、npm install、Chrome タブ起動を行わず、予定だけ確認します。
+実際のインストール、ChatGPT のダウンロード、Godot コピー、ExecutionPolicy 変更、npm install、アプリ・Chrome タブ起動を行わず、予定だけ確認します。
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install_all.ps1 -DryRun
@@ -90,6 +92,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install_all.ps1
 ```
 
 管理者権限で実行されていない場合、`install_all.ps1` が自分自身を管理者権限で再実行します。`-DryRun` は管理者権限なしでも続行します。テスト用に昇格を抑止する場合は `-NoElevate` を指定できます。
+
+ChatGPT の導入は管理者処理の完了後、最初に実行したユーザーのプロセスで行います。Microsoft Store に接続できる環境と `winget.exe`（アプリ インストーラー）が必要です。`winget` がない場合は Microsoft Store で「アプリ インストーラー」を導入・更新してください。失敗時はログに原因を記録して停止します。公式の導入方法は [OpenAI の Windows アプリ案内](https://help.openai.com/en/articles/9982051-using-the-chatgpt-windows-app) を参照してください。
+
+`-SkipAppLaunches` でアプリの自動起動を、`-SkipChromeTabs` で Chrome のタブ起動を省略できます。いずれもインストール処理は行います。`-DeferChatGPTInstall` は管理者への再実行で内部的に使う引数です。
 
 ## 本番実行
 
@@ -128,6 +134,8 @@ logs\codex-install.log
 ```
 
 ## 初回認証
+
+ChatGPT デスクトップ版の初回ログインは、起動したアプリ上で手動で行ってください。
 
 Codex CLI の初回認証は自動化しません。セットアップ後、ユーザーが手動で次を実行してください。
 

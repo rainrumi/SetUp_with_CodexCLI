@@ -1,5 +1,8 @@
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install_all.ps1 -Force
 
+上のコマンドで ChatGPT デスクトップ版も Microsoft Store からダウンロード・インストールして起動します。
+導入済みの場合は起動のみ行います。winget（アプリ インストーラー）とインターネット接続が必要です。
+
 
 ソースツリーのターミナルでこれやるとプッシュ時に自動でアカウント選ばれる
 git config --local credential.https://github.com.username "GitHubのユーザー名"

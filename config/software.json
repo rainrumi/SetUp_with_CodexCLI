@@ -77,6 +77,13 @@
       ]
     },
     {
+      "id": "chatgpt",
+      "name": "ChatGPT Desktop",
+      "fileName": "",
+      "storeId": "9NT1R1C2HH7J",
+      "packageName": "OpenAI.ChatGPT-Desktop"
+    },
+    {
       "id": "codex",
       "name": "OpenAI Codex CLI",
       "fileName": "",

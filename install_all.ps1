@@ -4,6 +4,7 @@ param(
     [switch]$NoElevate,
     [switch]$SkipChromeTabs,
     [switch]$SkipAppLaunches,
+    [switch]$DeferChatGPTInstall,
     [string]$InstallRoot = "C:\Tools"
 )
 
@@ -82,15 +83,17 @@ function Restart-AsAdminIfNeeded {
     }
     $arguments += "-SkipChromeTabs"
     $arguments += "-SkipAppLaunches"
+    $arguments += "-DeferChatGPTInstall"
 
     Write-Log "Restarting as administrator."
     $process = Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -Verb RunAs -Wait -PassThru
     Write-Log "Administrator setup process exit code: $($process.ExitCode)"
 
     if ($process.ExitCode -eq 0) {
+        if (-not $DeferChatGPTInstall) { Install-ChatGPTDesktop }
         Write-Log "Administrator setup completed. Opening apps and Chrome tabs from the original user process."
-        Open-InstalledApps
-        Open-ChromeTabs
+        if (-not $SkipAppLaunches) { Open-InstalledApps }
+        if (-not $SkipChromeTabs) { Open-ChromeTabs }
         Show-Summary
     }
 
@@ -696,6 +699,79 @@ function Install-CodexCli {
     Add-Result $name "Installed" $version
 }
 
+function Get-ChatGPTPackage {
+    $item = Get-SoftwareItem -Id "chatgpt"
+    return Get-AppxPackage -Name $item.packageName -ErrorAction Stop | Select-Object -First 1
+}
+
+function Install-ChatGPTDesktop {
+    $item = Get-SoftwareItem -Id "chatgpt"
+    $name = $item.name
+    $installed = Get-ChatGPTPackage
+    if ($installed) {
+        Write-Log "$name is already installed. Skipping: $($installed.PackageFullName)"
+        Add-Result $name "Skipped" $installed.PackageFullName
+        return
+    }
+
+    $arguments = @(
+        "install", "--id", $item.storeId, "--exact", "--source", "msstore",
+        "--accept-package-agreements", "--accept-source-agreements", "--silent",
+        "--disable-interactivity"
+    )
+    if ($DryRun) {
+        Write-Log "DryRun: winget.exe $($arguments -join ' ')" "DRYRUN"
+        Add-Result $name "DryRun" "Would download and install from Microsoft Store"
+        return
+    }
+
+    $winget = Get-Command "winget.exe" -ErrorAction SilentlyContinue
+    if (-not $winget) {
+        throw "ChatGPT Desktop requires winget.exe. Install or update App Installer from Microsoft Store, then run setup again."
+    }
+
+    try {
+        Invoke-ExternalProcess -FilePath $winget.Source -ArgumentList $arguments | Out-Null
+    }
+    catch {
+        throw "ChatGPT Desktop installation failed. Check your network, Microsoft Store access, and winget diagnostic logs. $($_.Exception.Message)"
+    }
+    if (-not (Get-ChatGPTPackage)) {
+        throw "ChatGPT Desktop was not registered for the current user after winget completed. Check Microsoft Store and run setup again."
+    }
+    Add-Result $name "Installed" "Downloaded and installed from Microsoft Store"
+}
+
+function Open-ChatGPTDesktop {
+    $name = "ChatGPT Desktop launch"
+    if ($DryRun) {
+        Write-Log "DryRun: ChatGPT Desktop will be opened after installation." "DRYRUN"
+        Add-Result $name "DryRun" "Would open ChatGPT Desktop"
+        return
+    }
+
+    $package = Get-ChatGPTPackage
+    if (-not $package) {
+        throw "ChatGPT Desktop launch failed: app is not installed for the current user."
+    }
+    $manifest = Get-AppxPackageManifest -Package $package.PackageFullName -ErrorAction Stop
+    $application = $manifest.Package.Applications.Application | Select-Object -First 1
+    if (-not $application.Id) {
+        throw "ChatGPT Desktop launch failed: application ID was not found in the package manifest."
+    }
+    $target = "shell:AppsFolder\$($package.PackageFamilyName)!$($application.Id)"
+    Write-Log "ChatGPT Desktop launch target: $target"
+    try {
+        $shell = New-Object -ComObject Shell.Application
+        $shell.ShellExecute("explorer.exe", $target, "", "open", 1)
+    }
+    catch {
+        Write-Log "Shell launch failed for ChatGPT Desktop. Falling back to Explorer: $($_.Exception.Message)" "WARN"
+        Start-Process -FilePath "explorer.exe" -ArgumentList $target -WindowStyle Normal
+    }
+    Add-Result $name "Opened" $target
+}
+
 function Open-InstalledApps {
     $targets = @(
         [pscustomobject]@{ Name = "Godot"; Path = Get-GodotPath },
@@ -733,12 +809,12 @@ function Open-InstalledApps {
             Add-Result $resultName "Opened" $target.Path
         }
     }
+    Open-ChatGPTDesktop
 }
 
 function Open-ChromeTabs {
     $name = "Google Chrome tabs"
     $urls = @(
-        "https://chatgpt.com/ja-JP/",
         "https://github.co.jp/",
         "https://www.microsoft.com/ja-jp/microsoft-teams/log-in",
         "https://discord.com/"
@@ -820,6 +896,13 @@ try {
     $Script:GitInstallJob = $null
     Install-SourcetreeEnterprise
     Install-VSCode
+    if ($DeferChatGPTInstall) {
+        Write-Log "ChatGPT Desktop installation is deferred to the original user process."
+        Add-Result "ChatGPT Desktop" "Deferred" "Original user process will install the app"
+    }
+    else {
+        Install-ChatGPTDesktop
+    }
     if ($SkipAppLaunches) {
         Write-Log "Installed apps will be opened by the original user process after elevation completes."
         Add-Result "Installed apps launch" "Deferred" "Original user process will open apps"
