@@ -25,7 +25,7 @@ Chrome が見つからない場合、タブは開かずログにスキップ理�
 | Sourcetree Enterprise | 3.4.32 | https://www.sourcetreeapp.com/enterprise |
 | Visual Studio Code | 1.143.1 | https://code.visualstudio.com/updates |
 | OpenAI Codex CLI | 実行時の npm latest | https://www.npmjs.com/package/@openai/codex |
-| ChatGPT デスクトップ版 | 実行時の Microsoft Store 配布版 | https://apps.microsoft.com/detail/9NT1R1C2HH7J |
+| ChatGPT デスクトップ版 | 実行時の Microsoft Store 配布版（新版） | https://apps.microsoft.com/detail/9PLM9XGG6VKS |
 
 同梱ファイルのバージョンは確認時点のものです。Codex CLI と ChatGPT を除き、次回以降も自動で新版を取得する仕組みではありません。
 既存のソフトはバージョンにかかわらずスキップされます。このキットの更新だけでは、この PC にインストール済みのソフトは更新されません。
