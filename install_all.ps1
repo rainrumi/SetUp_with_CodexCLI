@@ -86,14 +86,14 @@ function Restart-AsAdminIfNeeded {
     $arguments += "-DeferChatGPTInstall"
 
     Write-Log "Restarting as administrator."
-    $process = Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -Verb RunAs -Wait -PassThru
+    $process = Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -Verb RunAs -PassThru
+    # Wait for setup itself; an installer may leave a descendant process running.
+    $process.WaitForExit()
     Write-Log "Administrator setup process exit code: $($process.ExitCode)"
 
     if ($process.ExitCode -eq 0) {
-        if (-not $DeferChatGPTInstall) { Install-ChatGPTDesktop }
-        Write-Log "Administrator setup completed. Opening apps and Chrome tabs from the original user process."
-        if (-not $SkipAppLaunches) { Open-InstalledApps }
-        if (-not $SkipChromeTabs) { Open-ChromeTabs }
+        Write-Log "Administrator setup completed. Continuing in the original user process."
+        Complete-Setup
         Show-Summary
     }
 
@@ -761,15 +761,45 @@ function Open-ChatGPTDesktop {
     }
     $target = "shell:AppsFolder\$($package.PackageFamilyName)!$($application.Id)"
     Write-Log "ChatGPT Desktop launch target: $target"
+    Start-Process -FilePath "$env:WINDIR\explorer.exe" -ArgumentList $target -WindowStyle Normal
+    Add-Result $name "LaunchRequested" $target
+}
+
+function Start-DesktopApplication {
+    param([string]$FilePath, [string]$Arguments)
+
+    $workingDirectory = Split-Path -Parent $FilePath
+    if (Test-IsAdmin) {
+        try {
+            $shell = New-Object -ComObject Shell.Application
+            $shell.ShellExecute($FilePath, $Arguments, $workingDirectory, "open", 1)
+            return
+        }
+        catch {
+            Write-Log "Windows Shell launch failed for ${FilePath}: $($_.Exception.Message). Trying Start-Process." "WARN"
+        }
+    }
+
+    $options = @{
+        FilePath = $FilePath
+        WorkingDirectory = $workingDirectory
+        WindowStyle = "Normal"
+    }
+    if ($Arguments) { $options.ArgumentList = $Arguments }
+    Start-Process @options
+}
+
+function Invoke-SetupStep {
+    param([string]$Name, [scriptblock]$Action)
+
     try {
-        $shell = New-Object -ComObject Shell.Application
-        $shell.ShellExecute("explorer.exe", $target, "", "open", 1)
+        & $Action
     }
     catch {
-        Write-Log "Shell launch failed for ChatGPT Desktop. Falling back to Explorer: $($_.Exception.Message)" "WARN"
-        Start-Process -FilePath "explorer.exe" -ArgumentList $target -WindowStyle Normal
+        $message = $_.Exception.Message
+        Write-Log "${Name}: $message" "ERROR"
+        Add-Result $Name "Failed" $message
     }
-    Add-Result $name "Opened" $target
 }
 
 function Open-InstalledApps {
@@ -796,20 +826,11 @@ function Open-InstalledApps {
             continue
         }
 
-        try {
-            $workingDirectory = Split-Path -Parent $target.Path
-            $shell = New-Object -ComObject Shell.Application
-            $shell.ShellExecute($target.Path, "", $workingDirectory, "open", 1)
-            Write-Log "$($target.Name) was launched through Windows Shell."
-            Add-Result $resultName "Opened" $target.Path
-        }
-        catch {
-            Write-Log "Shell launch failed for $($target.Name). Falling back to Start-Process: $($_.Exception.Message)" "WARN"
-            Start-Process -FilePath $target.Path -WorkingDirectory (Split-Path -Parent $target.Path) -WindowStyle Normal
-            Add-Result $resultName "Opened" $target.Path
+        Invoke-SetupStep $resultName {
+            Start-DesktopApplication -FilePath $target.Path
+            Add-Result $resultName "LaunchRequested" $target.Path
         }
     }
-    Open-ChatGPTDesktop
 }
 
 function Open-ChromeTabs {
@@ -830,7 +851,7 @@ function Open-ChromeTabs {
     }
 
     Write-Log "Google Chrome path: $chromePath"
-    $chromeArguments = @("--new-window") + $urls
+    $chromeArguments = @("--new-window", "--start-maximized") + $urls
     $chromeArgumentString = $chromeArguments -join " "
     Write-Log "Chrome arguments: $chromeArgumentString"
 
@@ -840,16 +861,34 @@ function Open-ChromeTabs {
         return
     }
 
-    try {
-        $shell = New-Object -ComObject Shell.Application
-        $shell.ShellExecute($chromePath, $chromeArgumentString, (Split-Path -Parent $chromePath), "open", 1)
-        Write-Log "Chrome was launched through Windows Shell."
+    Start-DesktopApplication -FilePath $chromePath -Arguments $chromeArgumentString
+    Add-Result $name "LaunchRequested" "$($urls.Count) tabs in a new Chrome window"
+}
+
+function Complete-Setup {
+    Write-Log "Finishing setup in session $([Diagnostics.Process]::GetCurrentProcess().SessionId), interactive: $([Environment]::UserInteractive), administrator: $(Test-IsAdmin). SkipAppLaunches: $SkipAppLaunches SkipChromeTabs: $SkipChromeTabs"
+    if ($DeferChatGPTInstall) {
+        Write-Log "ChatGPT Desktop installation is deferred to the original user process."
+        Add-Result "ChatGPT Desktop" "Deferred" "Original user process will install the app"
     }
-    catch {
-        Write-Log "Shell launch failed. Falling back to Start-Process: $($_.Exception.Message)" "WARN"
-        Start-Process -FilePath $chromePath -ArgumentList $chromeArgumentString -WindowStyle Normal
+    else {
+        Invoke-SetupStep "ChatGPT Desktop installation" { Install-ChatGPTDesktop }
     }
-    Add-Result $name "Opened" "$($urls.Count) tabs in a new Chrome window"
+
+    if (-not $SkipAppLaunches) {
+        Invoke-SetupStep "Installed apps launch" { Open-InstalledApps }
+        if (-not ($Script:Results | Where-Object { $_.Name -eq "ChatGPT Desktop installation" -and $_.Status -eq "Failed" })) {
+            Invoke-SetupStep "ChatGPT Desktop launch" { Open-ChatGPTDesktop }
+        }
+    }
+
+    if (-not $SkipChromeTabs) {
+        Invoke-SetupStep "Google Chrome tabs" { Open-ChromeTabs }
+    }
+
+    if ($Script:Results.Status -contains "Failed") {
+        throw "One or more setup or launch steps failed. See the individual errors in install.log."
+    }
 }
 
 function Show-Summary {
@@ -896,28 +935,7 @@ try {
     $Script:GitInstallJob = $null
     Install-SourcetreeEnterprise
     Install-VSCode
-    if ($DeferChatGPTInstall) {
-        Write-Log "ChatGPT Desktop installation is deferred to the original user process."
-        Add-Result "ChatGPT Desktop" "Deferred" "Original user process will install the app"
-    }
-    else {
-        Install-ChatGPTDesktop
-    }
-    if ($SkipAppLaunches) {
-        Write-Log "Installed apps will be opened by the original user process after elevation completes."
-        Add-Result "Installed apps launch" "Deferred" "Original user process will open apps"
-    }
-    else {
-        Open-InstalledApps
-    }
-
-    if ($SkipChromeTabs) {
-        Write-Log "Chrome tabs will be opened by the original user process after elevation completes."
-        Add-Result "Google Chrome tabs" "Deferred" "Original user process will open tabs"
-    }
-    else {
-        Open-ChromeTabs
-    }
+    Complete-Setup
     Show-Summary
     Write-Log "Completed at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
     exit 0

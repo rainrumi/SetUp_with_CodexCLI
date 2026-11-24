@@ -6,7 +6,7 @@
 
 ChatGPT デスクトップ版は、セットアップ後に自動起動します。インストール済みの場合は再インストールせず起動します。Chrome で ChatGPT を開く処理はありません。
 
-セットアップ処理の最後に、Google Chrome で次のタブを開きます。
+セットアップ処理の最後に、Google Chrome の新しいウィンドウを最大化して、次のタブを開きます。
 
 - `https://github.co.jp/`
 - `https://www.microsoft.com/ja-jp/microsoft-teams/log-in`
@@ -96,6 +96,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install_all.ps1
 ChatGPT の導入は管理者処理の完了後、最初に実行したユーザーのプロセスで行います。Microsoft Store に接続できる環境と `winget.exe`（アプリ インストーラー）が必要です。`winget` がない場合は Microsoft Store で「アプリ インストーラー」を導入・更新してください。失敗時はログに原因を記録して停止します。公式の導入方法は [OpenAI の Windows アプリ案内](https://help.openai.com/en/articles/9982051-using-the-chatgpt-windows-app) を参照してください。
 
 `-SkipAppLaunches` でアプリの自動起動を、`-SkipChromeTabs` で Chrome のタブ起動を省略できます。いずれもインストール処理は行います。`-DeferChatGPTInstall` は管理者への再実行で内部的に使う引数です。
+
+画面が表示されない場合は、ログオン中のデスクトップで開いた PowerShell から実行し、`logs\install.log` の末尾を確認してください。`LaunchRequested` は Windows に起動を依頼した状態です。起動処理でエラーが検出された場合は `Failed` と原因を記録し、残りのアプリや Chrome の起動を試します。
 
 ## 本番実行
 
