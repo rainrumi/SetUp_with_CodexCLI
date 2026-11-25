@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import queue
+import shutil
 import subprocess
 import sys
 import threading
@@ -42,6 +43,7 @@ class SetupGuiApp(tk.Tk):
         self.software_vars: dict[str, tk.BooleanVar] = {}
         self.software_status_labels: dict[str, tuple[tk.StringVar, ttk.Label]] = {}
         self.launch_vars: dict[str, tk.BooleanVar] = {}
+        self.launch_warn_vars: dict[str, tk.StringVar] = {}
         self.tab_vars: dict[str, tk.BooleanVar] = {}
         self.chatgpt_mode_var = tk.StringVar(value="Desktop")
         self.install_root_var = tk.StringVar(value=r"C:\Tools")
@@ -52,6 +54,8 @@ class SetupGuiApp(tk.Tk):
         self.links_process: subprocess.Popen | None = None
         self._loading_settings = True
 
+        RESOURCE_DIR.mkdir(parents=True, exist_ok=True)
+
         self._configure_style()
         self._build_ui()
         self._load_saved_settings()
@@ -60,9 +64,6 @@ class SetupGuiApp(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.refresh_resource_status()
         self._poll_log_queue()
-
-        if auto_open_links and get_missing_required_items(self.config_data):
-            self.after(250, self.open_resource_links_gui)
 
     def _configure_style(self) -> None:
         style = ttk.Style(self)
@@ -78,6 +79,7 @@ class SetupGuiApp(tk.Tk):
         style.configure("StatusMissing.TLabel", foreground="#b91c1c", font=("Yu Gothic UI", 8, "bold"))
         style.configure("StatusOk.TLabel", foreground="#15803d", font=("Yu Gothic UI", 8))
         style.configure("StatusAuto.TLabel", foreground="#1d4ed8", font=("Yu Gothic UI", 8))
+        style.configure("StatusDimmed.TLabel", foreground="#b3b3b3", font=("Yu Gothic UI", 8))
         style.configure("Primary.TButton", font=("Yu Gothic UI", 10, "bold"), padding=(14, 7))
 
     def _build_ui(self) -> None:
@@ -199,7 +201,8 @@ class SetupGuiApp(tk.Tk):
             row = ttk.Frame(inner)
             row.pack(fill=tk.X, pady=3)
 
-            label_text = f"{item['name']}  ({item.get('version', '')})"
+            sub_text = (item.get("filePattern") or item.get("version") or "").strip()
+            label_text = f"{item['name']}  ({sub_text})" if sub_text else item["name"]
             cb = ttk.Checkbutton(
                 row,
                 text=label_text,
@@ -251,10 +254,19 @@ class SetupGuiApp(tk.Tk):
             var = tk.BooleanVar(value=bool(item.get("defaultLaunch", False)))
             self.launch_vars[item_id] = var
 
+            row = ttk.Frame(app_panel)
+            row.pack(fill=tk.X, pady=2)
+
             text = item["name"]
             if item_id == "chatgpt":
                 text = "ChatGPT (デスクトップ版起動 / Web版はブラウザ)"
-            ttk.Checkbutton(app_panel, text=text, variable=var).pack(anchor=tk.W, pady=2)
+            ttk.Checkbutton(row, text=text, variable=var).pack(side=tk.LEFT, anchor=tk.W)
+
+            warn_var = tk.StringVar(value="")
+            self.launch_warn_vars[item_id] = warn_var
+            ttk.Label(row, textvariable=warn_var, style="StatusMissing.TLabel").pack(
+                side=tk.LEFT, padx=(6, 0)
+            )
 
         # Browser tabs section
         browser_panel = ttk.LabelFrame(right_col, text="ブラウザ (Chrome) で展開するタブ", padding=10)
@@ -390,57 +402,154 @@ class SetupGuiApp(tk.Tk):
 
     def _bind_setting_traces(self) -> None:
         for var in self.software_vars.values():
-            var.trace_add("write", self._save_settings)
+            var.trace_add("write", self._on_selection_changed)
         for var in self.launch_vars.values():
-            var.trace_add("write", self._save_settings)
+            var.trace_add("write", self._on_selection_changed)
         for var in self.tab_vars.values():
             var.trace_add("write", self._save_settings)
         self.chatgpt_mode_var.trace_add("write", self._save_settings)
-        self.install_root_var.trace_add("write", self._save_settings)
+        self.install_root_var.trace_add("write", self._on_selection_changed)
+
+    def _on_selection_changed(self, *_args: object) -> None:
+        self._save_settings()
+        if not self._loading_settings:
+            self.refresh_resource_status()
 
     def _on_close(self) -> None:
         self._save_settings()
         self.destroy()
 
+    def is_software_installed(self, item: dict, install_root: str) -> bool:
+        item_id = item.get("id")
+        detect_paths = item.get("detectPaths") or []
+
+        def _any_path_exists(paths: list[str]) -> bool:
+            for raw in paths:
+                expanded = os.path.expandvars(raw)
+                if os.path.exists(expanded):
+                    return True
+            return False
+
+        if item_id == "godot":
+            godot_dir = Path(install_root) / "Godot"
+            if godot_dir.is_dir() and any(
+                p.is_file() for p in godot_dir.glob("Godot_v*_win64.exe")
+            ):
+                return True
+            rel = item.get("destinationRelativePath")
+            if rel and (Path(install_root) / rel).exists():
+                return True
+            return _any_path_exists(detect_paths)
+
+        if item_id == "node":
+            return bool(shutil.which("node.exe") and shutil.which("npm.cmd"))
+
+        if item_id == "git":
+            return _any_path_exists(detect_paths) or bool(shutil.which("git.exe"))
+
+        if item_id == "vscode":
+            return _any_path_exists(detect_paths) or bool(shutil.which("code.cmd"))
+
+        return _any_path_exists(detect_paths)
+
+    def get_missing_needed_items(self, selected_software: list[str], install_root: str) -> list[dict]:
+        missing: list[dict] = []
+        for item in self.software_items:
+            if item["id"] not in selected_software:
+                continue
+            if not item.get("resourceRequired"):
+                continue
+            if self.is_software_installed(item, install_root):
+                continue
+            if find_resource_file(item) is None:
+                missing.append(item)
+        return missing
+
     def refresh_resource_status(self) -> None:
-        missing_required = 0
+        install_root = self.install_root_var.get().strip() or r"C:\Tools"
+        selected_software = [
+            item["id"]
+            for item in self.software_items
+            if self.software_vars[item["id"]].get()
+        ]
+
         for item in self.software_items:
             item_id = item["id"]
             status_var, status_lbl = self.software_status_labels[item_id]
             found = find_resource_file(item)
+            is_selected = item_id in selected_software
 
             if item.get("resourceRequired"):
                 if found:
                     status_var.set("resource配置済")
-                    status_lbl.configure(style="StatusOk.TLabel")
+                    style_name = "StatusOk.TLabel"
+                elif self.is_software_installed(item, install_root):
+                    status_var.set("導入済 (不要)")
+                    style_name = "StatusOk.TLabel"
                 else:
-                    missing_required += 1
                     status_var.set("resource未配置")
-                    status_lbl.configure(style="StatusMissing.TLabel")
+                    style_name = "StatusMissing.TLabel"
             elif item.get("installMethod") == "winget_or_local":
                 if found:
                     status_var.set("ローカル優先")
-                    status_lbl.configure(style="StatusOk.TLabel")
+                    style_name = "StatusOk.TLabel"
                 else:
                     status_var.set("winget自動取得")
-                    status_lbl.configure(style="StatusAuto.TLabel")
+                    style_name = "StatusAuto.TLabel"
             elif item.get("installMethod") == "npm":
                 status_var.set("npm自動取得")
-                status_lbl.configure(style="StatusAuto.TLabel")
+                style_name = "StatusAuto.TLabel"
             elif item.get("installMethod") == "msstore":
                 status_var.set("Store / Web")
-                status_lbl.configure(style="StatusAuto.TLabel")
+                style_name = "StatusAuto.TLabel"
+            else:
+                style_name = "StatusAuto.TLabel"
 
-        if missing_required > 0:
+            status_lbl.configure(style=style_name if is_selected else "StatusDimmed.TLabel")
+
+        missing_needed = self.get_missing_needed_items(selected_software, install_root)
+        if missing_needed:
             self.banner_var.set(
-                f"⚠ resource フォルダに未配置の必須ファイルが {missing_required} 件あります。「DLリンク集を開く」から取得してください。"
+                f"⚠ 選択中の未導入ソフトに必要な resource ファイルが {len(missing_needed)} 件不足しています（開始時に案内されます）。"
             )
             self.banner_label.configure(style="BannerWarn.TLabel")
         else:
-            self.banner_var.set("✓ 必須の resource ファイルはすべて配置済みです。")
+            self.banner_var.set("✓ 選択中のソフトに必要な resource ファイルは揃っています。")
             self.banner_label.configure(style="BannerOk.TLabel")
 
+        for item in self.software_items:
+            item_id = item["id"]
+            if item_id not in self.launch_warn_vars:
+                continue
+            launch_on = self.launch_vars[item_id].get()
+            download_on = item_id in selected_software
+            already_installed = self.is_software_installed(item, install_root)
+            if launch_on and not download_on and not already_installed:
+                self.launch_warn_vars[item_id].set("※ダウンロードされないため起動されません")
+            else:
+                self.launch_warn_vars[item_id].set("")
+
+    def _prompt_open_resource_links_gui(self, missing_items: list[dict]) -> bool:
+        if not missing_items:
+            return False
+        bullets = "\n".join(
+            f"・{it['name']} : {it.get('filePattern') or it.get('fileName', '')}"
+            for it in missing_items
+        )
+        open_links = messagebox.askyesno(
+            "不足ファイルの確認",
+            "resource フォルダ内に必要なファイルが存在しません。\n\n"
+            "【ダウンロードが必要なファイル】\n"
+            f"{bullets}\n\n"
+            "ダウンロードリンク集を開きますか？",
+            parent=self,
+        )
+        if open_links:
+            self.open_resource_links_gui()
+        return open_links
+
     def open_resource_links_gui(self) -> None:
+        self._save_settings()
         if self.links_process is not None and self.links_process.poll() is None:
             return
         try:
@@ -505,33 +614,18 @@ class SetupGuiApp(tk.Tk):
             )
             return
 
-        # Warn if selected software requires missing resource files
-        missing_for_selection = [
-            item
-            for item in self.software_items
-            if item["id"] in selected_software
-            and item.get("resourceRequired")
-            and find_resource_file(item) is None
-        ]
-        if missing_for_selection and not dry_run:
-            names = "\n".join(
-                f"・{it['name']} ({it.get('fileName', '')})" for it in missing_for_selection
-            )
-            proceed = messagebox.askyesno(
-                "未配置のファイルがあります",
-                "選択中のソフトに必要なファイルが resource フォルダに見つかりません:\n\n"
-                f"{names}\n\n"
-                "既にPCへインストール済みのソフトはスキップされますが、未導入の場合はエラーで停止します。\n"
-                "このまま実行しますか？（「いいえ」でDLリンク集を開きます）",
-            )
-            if not proceed:
-                self.open_resource_links_gui()
-                return
+        install_root = self.install_root_var.get().strip() or r"C:\Tools"
+        RESOURCE_DIR.mkdir(parents=True, exist_ok=True)
+
+        # Check resource files only for selected software that will actually use them
+        missing_needed = self.get_missing_needed_items(selected_software, install_root)
+        if missing_needed:
+            self._prompt_open_resource_links_gui(missing_needed)
+            return
 
         software_arg = ",".join(selected_software) if selected_software else "NONE"
         launch_arg = ",".join(selected_launch) if selected_launch else "NONE"
         tabs_arg = ",".join(selected_tabs) if selected_tabs else "NONE"
-        install_root = self.install_root_var.get().strip() or r"C:\Tools"
 
         cmd = [
             "powershell.exe",

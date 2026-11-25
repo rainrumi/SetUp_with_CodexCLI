@@ -2,6 +2,8 @@
 setlocal
 cd /d "%~dp0"
 
+if not exist "resource" mkdir "resource"
+
 where pythonw >nul 2>nul
 if not errorlevel 1 (
     start "" pythonw "app\setup_gui.py" %*

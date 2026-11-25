@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import tkinter as tk
 from pathlib import Path
@@ -14,6 +15,7 @@ import webbrowser
 APP_DIR = Path(__file__).resolve().parent
 BASE_DIR = APP_DIR.parent
 CONFIG_PATH = APP_DIR / "config" / "software.json"
+SETTINGS_PATH = APP_DIR / "config" / "gui_settings.json"
 RESOURCE_DIR = BASE_DIR / "resource"
 
 
@@ -22,7 +24,36 @@ def load_config() -> dict:
         return json.load(fh)
 
 
+def load_saved_software_selection(config: dict | None = None) -> dict[str, bool]:
+    if config is None:
+        config = load_config()
+    selection = {
+        item["id"]: bool(item.get("defaultSelected", False))
+        for item in config.get("software", [])
+    }
+    if not SETTINGS_PATH.is_file():
+        return selection
+    try:
+        with SETTINGS_PATH.open("r", encoding="utf-8") as fh:
+            saved = json.load(fh)
+        saved_sw = saved.get("software") if isinstance(saved, dict) else None
+        if isinstance(saved_sw, dict):
+            for item_id in list(selection.keys()):
+                if item_id in saved_sw and isinstance(saved_sw[item_id], bool):
+                    selection[item_id] = saved_sw[item_id]
+    except Exception:
+        pass
+    return selection
+
+
+def _natural_sort_key(text: str) -> str:
+    return re.sub(r"\d+", lambda m: m.group(0).zfill(10), text.lower())
+
+
 def find_resource_file(item: dict) -> Path | None:
+    if not RESOURCE_DIR.is_dir():
+        return None
+
     candidates: list[str] = []
     file_name = (item.get("fileName") or "").strip()
     if file_name:
@@ -35,6 +66,17 @@ def find_resource_file(item: dict) -> Path | None:
         candidate = RESOURCE_DIR / name
         if candidate.is_file():
             return candidate
+
+    pattern = (item.get("filePattern") or "").strip()
+    if pattern:
+        matched = [p for p in RESOURCE_DIR.glob(pattern) if p.is_file()]
+        if matched:
+            matched.sort(
+                key=lambda p: (_natural_sort_key(p.name), p.stat().st_mtime),
+                reverse=True,
+            )
+            return matched[0]
+
     return None
 
 
@@ -77,6 +119,8 @@ class ResourceLinksWindow(tk.Tk):
         style.configure("Missing.TLabel", foreground="#b91c1c", font=("Yu Gothic UI", 9, "bold"))
         style.configure("Present.TLabel", foreground="#15803d", font=("Yu Gothic UI", 9, "bold"))
         style.configure("Optional.TLabel", foreground="#1d4ed8", font=("Yu Gothic UI", 9, "bold"))
+        style.configure("Dimmed.TLabel", foreground="#b3b3b3", font=("Yu Gothic UI", 9))
+        style.configure("Dimmed.TButton", foreground="#b3b3b3")
 
     def _build_ui(self) -> None:
         root_frame = ttk.Frame(self, padding=14)
@@ -84,7 +128,7 @@ class ResourceLinksWindow(tk.Tk):
 
         # Header
         header_frame = ttk.Frame(root_frame)
-        header_frame.pack(fill=tk.X, pady=(0, 10))
+        header_frame.pack(fill=tk.X, pady=(0, 6))
 
         ttk.Label(
             header_frame,
@@ -94,15 +138,31 @@ class ResourceLinksWindow(tk.Tk):
 
         desc = (
             "exe / msi ファイルは GitHub 規約・配布ライセンスの都合上リポジトリに含めていません。\n"
-            "下記の公式ページから必要なバージョンをダウンロードし、resource フォルダに配置してください。"
+            "下記の公式ページからインストーラーをダウンロードし、resource フォルダに配置してください。"
         )
         ttk.Label(header_frame, text=desc, style="SubHeader.TLabel", justify=tk.LEFT).pack(
             anchor=tk.W, pady=(4, 0)
         )
 
+        # Top status + right-aligned action buttons above the local installer section
+        top_bar = ttk.Frame(root_frame)
+        top_bar.pack(fill=tk.X, pady=(4, 6))
+
         self.summary_var = tk.StringVar(value="")
-        self.summary_label = ttk.Label(header_frame, textvariable=self.summary_var)
-        self.summary_label.pack(anchor=tk.W, pady=(6, 0))
+        self.summary_label = ttk.Label(top_bar, textvariable=self.summary_var)
+        self.summary_label.pack(side=tk.LEFT, anchor=tk.W)
+
+        ttk.Button(
+            top_bar,
+            text="未配置のリンクを開く",
+            command=self.open_all_missing_links,
+        ).pack(side=tk.RIGHT)
+
+        ttk.Button(
+            top_bar,
+            text="再チェック",
+            command=self.refresh_status,
+        ).pack(side=tk.RIGHT, padx=(0, 8))
 
         # Scrollable container
         canvas_container = ttk.Frame(root_frame)
@@ -144,7 +204,9 @@ class ResourceLinksWindow(tk.Tk):
         ]
 
         self._build_section(
-            "必須ファイル（resource フォルダへの配置が必要）", required_items, is_required=True
+            "ローカルインストーラー（対象ソフトを選択して導入する場合に resource フォルダへ配置）",
+            required_items,
+            is_required=True,
         )
         self._build_section(
             "任意 / 自動取得対応ソフト（winget・npm・Store から自動導入可能 / 手動DLリンク）",
@@ -152,7 +214,7 @@ class ResourceLinksWindow(tk.Tk):
             is_required=False,
         )
 
-        # Bottom toolbar
+        # Bottom toolbar (folder button stays bottom-left, close stays bottom-right)
         btn_frame = ttk.Frame(root_frame)
         btn_frame.pack(fill=tk.X, pady=(12, 0))
 
@@ -160,18 +222,6 @@ class ResourceLinksWindow(tk.Tk):
             btn_frame,
             text="resource フォルダを開く",
             command=self.open_resource_folder,
-        ).pack(side=tk.LEFT, padx=(0, 8))
-
-        ttk.Button(
-            btn_frame,
-            text="未配置の必須リンクをすべて開く",
-            command=self.open_all_missing_links,
-        ).pack(side=tk.LEFT, padx=(0, 8))
-
-        ttk.Button(
-            btn_frame,
-            text="再チェック",
-            command=self.refresh_status,
         ).pack(side=tk.LEFT)
 
         ttk.Button(
@@ -184,56 +234,50 @@ class ResourceLinksWindow(tk.Tk):
         section = ttk.LabelFrame(self.scrollable_frame, text=title, padding=10)
         section.pack(fill=tk.X, expand=True, pady=(0, 12))
 
-        header = ttk.Frame(section)
-        header.pack(fill=tk.X, pady=(0, 6))
-        header.columnconfigure(0, weight=0, minsize=95)
-        header.columnconfigure(1, weight=1, minsize=170)
-        header.columnconfigure(2, weight=1, minsize=145)
-        header.columnconfigure(3, weight=2, minsize=220)
-        header.columnconfigure(4, weight=0, minsize=145)
+        table = ttk.Frame(section)
+        table.pack(fill=tk.X, expand=True)
+        table.columnconfigure(0, weight=0, minsize=105)
+        table.columnconfigure(1, weight=0, minsize=190)
+        table.columnconfigure(2, weight=0, minsize=215)
+        table.columnconfigure(3, weight=1, minsize=220)
+        table.columnconfigure(4, weight=0, minsize=125)
 
-        for col, text in enumerate(("状態", "ソフト名", "必要バージョン", "ファイル名 / 備考", "ダウンロード")):
-            ttk.Label(header, text=text, style="Section.TLabel").grid(
-                row=0, column=col, sticky=tk.W, padx=4
+        for col, text in enumerate(("状態", "ソフト名", "ファイル名", "備考", "ダウンロード")):
+            ttk.Label(table, text=text, style="Section.TLabel").grid(
+                row=0, column=col, sticky=tk.W, padx=6, pady=(0, 6)
             )
 
-        ttk.Separator(section, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(0, 4))
+        ttk.Separator(table, orient=tk.HORIZONTAL).grid(
+            row=1, column=0, columnspan=5, sticky=tk.EW, pady=(0, 6)
+        )
 
-        for item in items:
-            row_frame = ttk.Frame(section)
-            row_frame.pack(fill=tk.X, pady=4)
-            row_frame.columnconfigure(0, weight=0, minsize=95)
-            row_frame.columnconfigure(1, weight=1, minsize=170)
-            row_frame.columnconfigure(2, weight=1, minsize=145)
-            row_frame.columnconfigure(3, weight=2, minsize=220)
-            row_frame.columnconfigure(4, weight=0, minsize=145)
-
+        for idx, item in enumerate(items, start=2):
             status_var = tk.StringVar(value="")
-            status_lbl = ttk.Label(row_frame, textvariable=status_var)
-            status_lbl.grid(row=0, column=0, sticky=tk.W, padx=4)
+            status_lbl = ttk.Label(table, textvariable=status_var)
+            status_lbl.grid(row=idx, column=0, sticky=tk.W, padx=6, pady=4)
 
-            ttk.Label(row_frame, text=item.get("name", item["id"])).grid(
-                row=0, column=1, sticky=tk.W, padx=4
-            )
+            name_lbl = ttk.Label(table, text=item.get("name", item["id"]))
+            name_lbl.grid(row=idx, column=1, sticky=tk.W, padx=6, pady=4)
 
-            ttk.Label(row_frame, text=item.get("version") or "-").grid(
-                row=0, column=2, sticky=tk.W, padx=4
-            )
+            file_pattern = (item.get("filePattern") or item.get("fileName") or "-").strip()
+            file_lbl = ttk.Label(table, text=file_pattern)
+            file_lbl.grid(row=idx, column=2, sticky=tk.W, padx=6, pady=4)
 
-            file_name = item.get("fileName") or ""
-            notes = item.get("notes") or ""
-            detail_text = f"{file_name}\n{notes}" if file_name else notes
-            ttk.Label(row_frame, text=detail_text, wraplength=290, justify=tk.LEFT).grid(
-                row=0, column=3, sticky=tk.W, padx=4
+            notes_lbl = ttk.Label(
+                table,
+                text=(item.get("notes") or "-"),
+                wraplength=250,
+                justify=tk.LEFT,
             )
+            notes_lbl.grid(row=idx, column=3, sticky=tk.W, padx=6, pady=4)
 
             url = item.get("downloadUrl") or ""
             btn = ttk.Button(
-                row_frame,
+                table,
                 text="公式ページを開く",
                 command=lambda u=url: self.open_url(u),
             )
-            btn.grid(row=0, column=4, sticky=tk.E, padx=4)
+            btn.grid(row=idx, column=4, sticky=tk.E, padx=6, pady=4)
 
             self.row_widgets.append(
                 {
@@ -241,6 +285,10 @@ class ResourceLinksWindow(tk.Tk):
                     "is_required": is_required,
                     "status_var": status_var,
                     "status_lbl": status_lbl,
+                    "name_lbl": name_lbl,
+                    "file_lbl": file_lbl,
+                    "notes_lbl": notes_lbl,
+                    "open_btn": btn,
                 }
             )
 
@@ -258,9 +306,14 @@ class ResourceLinksWindow(tk.Tk):
             messagebox.showerror("エラー", f"resource フォルダを開けませんでした:\n{exc}")
 
     def open_all_missing_links(self) -> None:
-        missing = get_missing_required_items(self.config_data)
+        selection = load_saved_software_selection(self.config_data)
+        missing = [
+            item
+            for item in get_missing_required_items(self.config_data)
+            if selection.get(item["id"], True)
+        ]
         if not missing:
-            messagebox.showinfo("完了", "必須ファイルはすべて resource フォルダに配置済みです。")
+            messagebox.showinfo("完了", "選択中のソフトに必要なファイルはすべて resource フォルダに配置済みです。")
             return
         for item in missing:
             url = item.get("downloadUrl") or ""
@@ -268,39 +321,56 @@ class ResourceLinksWindow(tk.Tk):
                 webbrowser.open(url)
 
     def refresh_status(self) -> None:
-        missing_count = 0
-        required_total = 0
+        selection = load_saved_software_selection(self.config_data)
+        missing_selected = 0
+        selected_required_total = 0
 
         for entry in self.row_widgets:
             item = entry["item"]
             is_required = entry["is_required"]
+            is_selected = selection.get(item["id"], True)
             found = find_resource_file(item)
 
             if is_required:
-                required_total += 1
+                if is_selected:
+                    selected_required_total += 1
                 if found:
                     entry["status_var"].set("配置済")
-                    entry["status_lbl"].configure(style="Present.TLabel")
+                    status_style = "Present.TLabel"
                 else:
-                    missing_count += 1
+                    if is_selected:
+                        missing_selected += 1
                     entry["status_var"].set("未配置 (不足)")
-                    entry["status_lbl"].configure(style="Missing.TLabel")
+                    status_style = "Missing.TLabel"
             else:
                 if found:
                     entry["status_var"].set("ローカル有")
-                    entry["status_lbl"].configure(style="Present.TLabel")
+                    status_style = "Present.TLabel"
                 else:
                     entry["status_var"].set("自動導入可")
-                    entry["status_lbl"].configure(style="Optional.TLabel")
+                    status_style = "Optional.TLabel"
 
-        if missing_count == 0:
+            if is_selected:
+                entry["status_lbl"].configure(style=status_style)
+                entry["name_lbl"].configure(style="TLabel")
+                entry["file_lbl"].configure(style="TLabel")
+                entry["notes_lbl"].configure(style="TLabel")
+                entry["open_btn"].configure(style="TButton")
+            else:
+                entry["status_lbl"].configure(style="Dimmed.TLabel")
+                entry["name_lbl"].configure(style="Dimmed.TLabel")
+                entry["file_lbl"].configure(style="Dimmed.TLabel")
+                entry["notes_lbl"].configure(style="Dimmed.TLabel")
+                entry["open_btn"].configure(style="Dimmed.TButton")
+
+        if missing_selected == 0:
             self.summary_var.set(
-                f"必須ファイル ({required_total}/{required_total}) はすべて resource フォルダに配置されています。"
+                f"選択中のローカル対象 ({selected_required_total} 件) はすべて配置済みです。"
             )
             self.summary_label.configure(style="Present.TLabel")
         else:
             self.summary_var.set(
-                f"未配置の必須ファイルが {missing_count} 件あります（全 {required_total} 件中）。配置後に「再チェック」を押してください。"
+                f"選択中のソフトで未配置のファイルが {missing_selected} 件あります。配置後に「再チェック」を押してください。"
             )
             self.summary_label.configure(style="Missing.TLabel")
 
