@@ -251,8 +251,20 @@ function Resolve-ResourceFile {
     return Join-Path $Script:ResourceDir $FileName
 }
 
+function Get-NaturalVersionSortKey {
+    param([Parameter(Mandatory = $true)][string]$Text)
+    return [regex]::Replace($Text.ToLowerInvariant(), '\d+', {
+        param($m)
+        $m.Value.PadLeft(10, '0')
+    })
+}
+
 function Find-LocalInstaller {
     param([Parameter(Mandatory = $true)]$Item)
+
+    if (-not (Test-Path -LiteralPath $Script:ResourceDir)) {
+        return $null
+    }
 
     $candidates = @()
     if ($Item.fileName) {
@@ -269,6 +281,30 @@ function Find-LocalInstaller {
         }
     }
 
+    if ($Item.filePattern) {
+        $matches = @(Get-ChildItem -LiteralPath $Script:ResourceDir -Filter $Item.filePattern -File -ErrorAction SilentlyContinue)
+        if ($matches.Count -gt 0) {
+            $best = $matches |
+                Sort-Object -Property @{ Expression = { Get-NaturalVersionSortKey -Text $_.Name }; Descending = $true }, @{ Expression = { $_.LastWriteTimeUtc }; Descending = $true } |
+                Select-Object -First 1
+            return $best.FullName
+        }
+    }
+
+    return $null
+}
+
+function Find-InstalledGodotInRoot {
+    $godotDir = Join-Path $InstallRoot "Godot"
+    if (Test-Path -LiteralPath $godotDir) {
+        $matches = @(Get-ChildItem -LiteralPath $godotDir -Filter "Godot_v*_win64.exe" -File -ErrorAction SilentlyContinue)
+        if ($matches.Count -gt 0) {
+            $best = $matches |
+                Sort-Object -Property @{ Expression = { Get-NaturalVersionSortKey -Text $_.Name }; Descending = $true }, @{ Expression = { $_.LastWriteTimeUtc }; Descending = $true } |
+                Select-Object -First 1
+            return $best.FullName
+        }
+    }
     return $null
 }
 
@@ -277,6 +313,10 @@ function Test-SoftwareItemInstalled {
 
     switch ($Item.id) {
         "godot" {
+            $inRoot = Find-InstalledGodotInRoot
+            if ($inRoot) {
+                return $inRoot
+            }
             if ($Item.destinationRelativePath) {
                 $configuredPath = Join-Path $InstallRoot $Item.destinationRelativePath
                 if (Test-Path -LiteralPath $configuredPath) {
@@ -355,19 +395,25 @@ function Assert-RequiredFiles {
             continue
         }
 
-        $path = Resolve-ResourceFile -FileName $item.fileName
-        if (-not (Test-Path -LiteralPath $path)) {
-            throw "Required file was not found: resource\$($item.fileName)"
+        $path = Find-LocalInstaller -Item $item
+        if (-not $path) {
+            $expectedDesc = if ($item.filePattern) { $item.filePattern } else { $item.fileName }
+            throw "Required file was not found in resource\: $expectedDesc"
         }
 
+        $matchedName = Split-Path -Leaf $path
         $sha = Get-FileSha256 -Path $path
-        Write-Log "Required file found: resource\$($item.fileName) SHA256=$sha"
+        Write-Log "Required file found: resource\$matchedName SHA256=$sha"
 
-        if ($item.expectedSha256 -and $item.expectedSha256.Trim().Length -gt 0) {
+        $isExactRecommended = $item.fileName -and ($matchedName.ToLowerInvariant() -eq $item.fileName.ToLowerInvariant())
+        if ($isExactRecommended -and $item.expectedSha256 -and $item.expectedSha256.Trim().Length -gt 0) {
             if ($sha.ToUpperInvariant() -ne $item.expectedSha256.ToUpperInvariant()) {
-                throw "SHA256 mismatch: resource\$($item.fileName)"
+                throw "SHA256 mismatch: resource\$matchedName"
             }
-            Write-Log "SHA256 verified: resource\$($item.fileName)"
+            Write-Log "SHA256 verified: resource\$matchedName"
+        }
+        elseif (-not $isExactRecommended) {
+            Write-Log "Using version-matched file: resource\$matchedName (recommended: $($item.fileName)). SHA256 logged."
         }
     }
 }
@@ -431,6 +477,11 @@ function Get-GoogleChromePath {
 }
 
 function Get-GodotPath {
+    $inRoot = Find-InstalledGodotInRoot
+    if ($inRoot) {
+        return $inRoot
+    }
+
     $item = Get-SoftwareItem -Id "godot"
     $configuredPath = Join-Path $InstallRoot $item.destinationRelativePath
     if (Test-Path -LiteralPath $configuredPath) {
@@ -486,7 +537,10 @@ function Install-7Zip {
         return
     }
 
-    $installer = Resolve-ResourceFile -FileName $item.fileName
+    $installer = Find-LocalInstaller -Item $item
+    if (-not $installer) {
+        throw "$name installer was not found in resource\"
+    }
     if ($DryRun) {
         Write-Log "DryRun: 7-Zip installer will not be called: $installer" "DRYRUN"
         Add-Result $name "DryRun" "Would install from $installer"
@@ -500,9 +554,18 @@ function Install-7Zip {
 function Install-Godot {
     $name = "Godot"
     $item = Get-SoftwareItem -Id "godot"
-    $source = Resolve-ResourceFile -FileName $item.fileName
-    $relative = $item.destinationRelativePath
-    $destination = Join-Path $InstallRoot $relative
+    $existing = Find-InstalledGodotInRoot
+    if ($existing) {
+        Write-Log "$name is already placed. Skipping: $existing"
+        Add-Result $name "Skipped" "Exists: $existing"
+        return
+    }
+
+    $source = Find-LocalInstaller -Item $item
+    if (-not $source) {
+        throw "Godot executable was not found in resource\"
+    }
+    $destination = Join-Path (Join-Path $InstallRoot "Godot") (Split-Path -Leaf $source)
 
     if (Test-Path -LiteralPath $destination) {
         Write-Log "$name is already placed. Skipping: $destination"
@@ -535,14 +598,17 @@ function Install-Node {
         $nodeVersion = Get-CommandVersion -Command "node.exe" -Arguments @("-v")
         $npmVersion = Get-CommandVersion -Command "npm.cmd" -Arguments @("-v")
         Write-Log "$name is already installed. Skipping: node=$nodeVersion npm=$npmVersion"
-        if ($nodeVersion -and ($nodeVersion -notmatch "^v24\.")) {
-            Write-Log "Node.js is not v24.x. Existing Node.js will not be removed or replaced." "WARN"
+        if ($nodeVersion -and ($nodeVersion -notmatch "^v26\.")) {
+            Write-Log "Node.js is not v26.x. Existing Node.js will not be removed or replaced." "WARN"
         }
         Add-Result $name "Skipped" "node=$nodeVersion npm=$npmVersion"
         return
     }
 
-    $msi = Resolve-ResourceFile -FileName $item.fileName
+    $msi = Find-LocalInstaller -Item $item
+    if (-not $msi) {
+        throw "$name MSI was not found in resource\"
+    }
     $nodeLog = Join-Path $Script:LogDir "node-install.log"
     if ($DryRun) {
         Write-Log "DryRun: Node.js MSI will not be called: $msi" "DRYRUN"
@@ -569,7 +635,10 @@ function Install-Node {
 function Start-GitInstallJob {
     $name = "Git for Windows"
     $item = Get-SoftwareItem -Id "git"
-    $installer = Resolve-ResourceFile -FileName $item.fileName
+    $installer = Find-LocalInstaller -Item $item
+    if (-not $installer) {
+        throw "$name installer was not found in resource\"
+    }
     $gitLog = Join-Path $Script:LogDir "git-install.log"
 
     Write-Log "Starting $name install in a separate background job."
@@ -703,9 +772,6 @@ function Wait-GitInstallJob {
 function Install-SourcetreeEnterprise {
     $name = "Sourcetree Enterprise"
     $item = Get-SoftwareItem -Id "sourcetree"
-    if ($item.fileName -notmatch '^SourcetreeEnterpriseSetup_\d+\.\d+\.\d+\.msi$') {
-        throw "Sourcetree Enterprise must use a versioned SourcetreeEnterpriseSetup MSI."
-    }
 
     $installed = Test-AnyPath -Paths $item.detectPaths
 
@@ -715,7 +781,13 @@ function Install-SourcetreeEnterprise {
         return
     }
 
-    $msi = Resolve-ResourceFile -FileName $item.fileName
+    $msi = Find-LocalInstaller -Item $item
+    if (-not $msi) {
+        throw "$name MSI was not found in resource\"
+    }
+    if ((Split-Path -Leaf $msi) -notmatch '^SourcetreeEnterpriseSetup_.*\.msi$') {
+        throw "Sourcetree Enterprise must use a SourcetreeEnterpriseSetup MSI."
+    }
     $sourcetreeLog = Join-Path $Script:LogDir "sourcetree-install.log"
     if ($DryRun) {
         Write-Log "DryRun: Sourcetree Enterprise MSI will not be called: $msi" "DRYRUN"
@@ -750,7 +822,10 @@ function Install-VSCode {
         return
     }
 
-    $installer = Resolve-ResourceFile -FileName $item.fileName
+    $installer = Find-LocalInstaller -Item $item
+    if (-not $installer) {
+        throw "$name installer was not found in resource\"
+    }
     $vscodeLog = Join-Path $Script:LogDir "vscode-install.log"
     if ($DryRun) {
         Write-Log "DryRun: Visual Studio Code installer will not be called: $installer" "DRYRUN"
