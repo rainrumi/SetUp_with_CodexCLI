@@ -5,18 +5,37 @@ param(
     [switch]$SkipChromeTabs,
     [switch]$SkipAppLaunches,
     [switch]$DeferChatGPTInstall,
-    [string]$InstallRoot = "C:\Tools"
+    [string]$InstallRoot = "C:\Tools",
+    [string]$SoftwareIds = "",
+    [string]$LaunchAppIds = "",
+    [string]$BrowserTabIds = "",
+    [ValidateSet("Desktop", "Web", "None")][string]$ChatGPTMode = "Desktop"
 )
 
 $ErrorActionPreference = "Stop"
 
-$Script:BaseDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
+    $InstallRoot = "C:\Tools"
+}
+$InstallRoot = $InstallRoot.Trim()
+if ($InstallRoot -match '["\r\n]') {
+    throw "Invalid InstallRoot path: contains disallowed characters."
+}
+if ($InstallRoot.Length -gt 3) {
+    $InstallRoot = $InstallRoot.TrimEnd('\', '/')
+}
+
+$Script:AppDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$Script:BaseDir = Split-Path -Parent $Script:AppDir
 $Script:ResourceDir = Join-Path $Script:BaseDir "resource"
-$Script:ConfigPath = Join-Path $Script:BaseDir "config\software.json"
-$Script:LogDir = Join-Path $Script:BaseDir "logs"
+$Script:ConfigPath = Join-Path $Script:AppDir "config\software.json"
+$Script:LogDir = Join-Path $Script:AppDir "logs"
 $Script:MainLog = Join-Path $Script:LogDir "install.log"
 $Script:Results = New-Object System.Collections.Generic.List[object]
 $Script:GitInstallJob = $null
+$Script:SelectedSoftwareIds = @()
+$Script:SelectedLaunchAppIds = @()
+$Script:SelectedBrowserTabIds = @()
 
 function Write-Log {
     param(
@@ -53,9 +72,80 @@ function Test-IsAdmin {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
+function Resolve-IdList {
+    param(
+        [string]$RawValue,
+        [string[]]$DefaultIds
+    )
+
+    if ([string]::IsNullOrWhiteSpace($RawValue)) {
+        return @($DefaultIds)
+    }
+
+    if ($RawValue.Trim().ToUpperInvariant() -eq "NONE") {
+        return @()
+    }
+
+    return @(
+        $RawValue.Split(",") |
+            ForEach-Object { $_.Trim().ToLowerInvariant() } |
+            Where-Object { $_ -ne "" }
+    )
+}
+
+function Initialize-Selections {
+    $config = Get-ConfiguredSoftware
+    $defaultSoftware = @($config.software | Where-Object { $_.defaultSelected -eq $true } | ForEach-Object { $_.id })
+    if ($defaultSoftware.Count -eq 0) {
+        $defaultSoftware = @("7zip", "godot", "node", "git", "sourcetree", "vscode", "codex", "chatgpt")
+    }
+
+    $defaultLaunchApps = @($config.software | Where-Object { $_.defaultLaunch -eq $true } | ForEach-Object { $_.id })
+    if ($defaultLaunchApps.Count -eq 0) {
+        $defaultLaunchApps = @("godot", "sourcetree", "vscode", "chatgpt")
+    }
+
+    $defaultBrowserTabs = @()
+    if ($config.browserTabs) {
+        $defaultBrowserTabs = @($config.browserTabs | Where-Object { $_.defaultSelected -eq $true } | ForEach-Object { $_.id })
+    }
+    if ($defaultBrowserTabs.Count -eq 0) {
+        $defaultBrowserTabs = @("github", "teams", "discord")
+    }
+
+    $Script:SelectedSoftwareIds = Resolve-IdList -RawValue $SoftwareIds -DefaultIds $defaultSoftware
+    $Script:SelectedLaunchAppIds = Resolve-IdList -RawValue $LaunchAppIds -DefaultIds $defaultLaunchApps
+    $Script:SelectedBrowserTabIds = Resolve-IdList -RawValue $BrowserTabIds -DefaultIds $defaultBrowserTabs
+}
+
+function Test-SoftwareSelected {
+    param([Parameter(Mandatory = $true)][string]$Id)
+    return $Script:SelectedSoftwareIds -contains $Id.ToLowerInvariant()
+}
+
+function Test-LaunchSelected {
+    param([Parameter(Mandatory = $true)][string]$Id)
+    return $Script:SelectedLaunchAppIds -contains $Id.ToLowerInvariant()
+}
+
+function Test-NeedsElevation {
+    $adminIds = @("7zip", "godot", "node", "git", "sourcetree", "unity", "steam")
+    foreach ($id in $adminIds) {
+        if (Test-SoftwareSelected -Id $id) {
+            return $true
+        }
+    }
+    return $false
+}
+
 function Restart-AsAdminIfNeeded {
     if ($DryRun) {
         Write-Log "DryRun mode: continuing without administrator rights."
+        return
+    }
+
+    if (-not (Test-NeedsElevation)) {
+        Write-Log "No administrator-only software selected. Skipping elevation."
         return
     }
 
@@ -81,6 +171,20 @@ function Restart-AsAdminIfNeeded {
         $arguments += "-InstallRoot"
         $arguments += "`"$InstallRoot`""
     }
+    if (-not [string]::IsNullOrWhiteSpace($SoftwareIds)) {
+        $arguments += "-SoftwareIds"
+        $arguments += "`"$SoftwareIds`""
+    }
+    if (-not [string]::IsNullOrWhiteSpace($LaunchAppIds)) {
+        $arguments += "-LaunchAppIds"
+        $arguments += "`"$LaunchAppIds`""
+    }
+    if (-not [string]::IsNullOrWhiteSpace($BrowserTabIds)) {
+        $arguments += "-BrowserTabIds"
+        $arguments += "`"$BrowserTabIds`""
+    }
+    $arguments += "-ChatGPTMode"
+    $arguments += $ChatGPTMode
     $arguments += "-SkipChromeTabs"
     $arguments += "-SkipAppLaunches"
     $arguments += "-DeferChatGPTInstall"
@@ -147,6 +251,27 @@ function Resolve-ResourceFile {
     return Join-Path $Script:ResourceDir $FileName
 }
 
+function Find-LocalInstaller {
+    param([Parameter(Mandatory = $true)]$Item)
+
+    $candidates = @()
+    if ($Item.fileName) {
+        $candidates += $Item.fileName
+    }
+    if ($Item.alternateFileNames) {
+        $candidates += @($Item.alternateFileNames)
+    }
+
+    foreach ($fileName in $candidates) {
+        $path = Resolve-ResourceFile -FileName $fileName
+        if (Test-Path -LiteralPath $path) {
+            return $path
+        }
+    }
+
+    return $null
+}
+
 function Test-SoftwareItemInstalled {
     param([Parameter(Mandatory = $true)]$Item)
 
@@ -208,7 +333,19 @@ function Test-SoftwareItemInstalled {
 function Assert-RequiredFiles {
     $config = Get-ConfiguredSoftware
     foreach ($item in $config.software) {
-        if (-not $item.fileName) {
+        if (-not (Test-SoftwareSelected -Id $item.id)) {
+            continue
+        }
+
+        $isRequired = $false
+        if ($null -ne $item.resourceRequired) {
+            $isRequired = [bool]$item.resourceRequired
+        }
+        elseif ($item.fileName) {
+            $isRequired = $true
+        }
+
+        if (-not $isRequired -or -not $item.fileName) {
             continue
         }
 
@@ -266,6 +403,9 @@ function Invoke-ExternalProcess {
 
 function Test-AnyPath {
     param([string[]]$Paths)
+    if (-not $Paths) {
+        return $null
+    }
     foreach ($path in $Paths) {
         $expanded = [Environment]::ExpandEnvironmentVariables($path)
         if (Test-Path -LiteralPath $expanded) {
@@ -318,6 +458,21 @@ function Get-VSCodePath {
     }
 
     return $null
+}
+
+function Get-AntigravityPath {
+    $item = Get-SoftwareItem -Id "antigravity"
+    return Test-AnyPath -Paths $item.detectPaths
+}
+
+function Get-UnityHubPath {
+    $item = Get-SoftwareItem -Id "unity"
+    return Test-AnyPath -Paths $item.detectPaths
+}
+
+function Get-SteamPath {
+    $item = Get-SoftwareItem -Id "steam"
+    return Test-AnyPath -Paths $item.detectPaths
 }
 
 function Install-7Zip {
@@ -612,6 +767,69 @@ function Install-VSCode {
     Add-Result $name "Installed" "Installer executed"
 }
 
+function Install-WingetOrLocalApp {
+    param(
+        [Parameter(Mandatory = $true)][string]$Id
+    )
+
+    $item = Get-SoftwareItem -Id $Id
+    $name = $item.name
+    $installed = Test-AnyPath -Paths $item.detectPaths
+
+    if ($installed) {
+        Write-Log "$name is already installed. Skipping: $installed"
+        Add-Result $name "Skipped" "Installed: $installed"
+        return
+    }
+
+    $localInstaller = Find-LocalInstaller -Item $item
+    if ($localInstaller) {
+        $silentArgs = @("/S")
+        if ($item.silentArgs -and $item.silentArgs.Count -gt 0) {
+            $silentArgs = @($item.silentArgs)
+        }
+
+        if ($DryRun) {
+            Write-Log "DryRun: $name local installer will not be called: $localInstaller ($($silentArgs -join ' '))" "DRYRUN"
+            Add-Result $name "DryRun" "Would install from local file $localInstaller"
+            return
+        }
+
+        Invoke-ExternalProcess -FilePath $localInstaller -ArgumentList $silentArgs -SuccessExitCodes @(0, 3010)
+        Add-Result $name "Installed" "Installed from local file $localInstaller"
+        return
+    }
+
+    if (-not $item.wingetId) {
+        throw "$name installer was not found in resource\ and no wingetId is configured."
+    }
+
+    $arguments = @(
+        "install", "--id", $item.wingetId, "--exact",
+        "--accept-package-agreements", "--accept-source-agreements",
+        "--silent", "--disable-interactivity"
+    )
+    if ($DryRun) {
+        Write-Log "DryRun: winget.exe $($arguments -join ' ')" "DRYRUN"
+        Add-Result $name "DryRun" "Would download and install via winget ($($item.wingetId))"
+        return
+    }
+
+    $winget = Get-Command "winget.exe" -ErrorAction SilentlyContinue
+    if (-not $winget) {
+        throw "$name requires winget.exe (or a local installer in resource\). Install App Installer from Microsoft Store or download from $($item.downloadUrl)."
+    }
+
+    try {
+        Invoke-ExternalProcess -FilePath $winget.Source -ArgumentList $arguments -SuccessExitCodes @(0, 3010) | Out-Null
+    }
+    catch {
+        throw "$name installation via winget failed. You can also download manually from $($item.downloadUrl). $($_.Exception.Message)"
+    }
+
+    Add-Result $name "Installed" "Installed via winget ($($item.wingetId))"
+}
+
 function Set-UserExecutionPolicy {
     $name = "PowerShell ExecutionPolicy"
     $currentPolicy = Get-ExecutionPolicy -Scope CurrentUser
@@ -706,7 +924,7 @@ function Get-ChatGPTPackage {
 
 function Install-ChatGPTDesktop {
     $item = Get-SoftwareItem -Id "chatgpt"
-    $name = $item.name
+    $name = "ChatGPT Desktop"
     $installed = Get-ChatGPTPackage
     if ($installed) {
         Write-Log "$name is already installed. Skipping: $($installed.PackageFullName)"
@@ -803,13 +1021,20 @@ function Invoke-SetupStep {
 }
 
 function Open-InstalledApps {
-    $targets = @(
-        [pscustomobject]@{ Name = "Godot"; Path = Get-GodotPath },
-        [pscustomobject]@{ Name = "Sourcetree Enterprise"; Path = Get-SourcetreePath },
-        [pscustomobject]@{ Name = "Visual Studio Code"; Path = Get-VSCodePath }
+    $allTargets = @(
+        [pscustomobject]@{ Id = "godot"; Name = "Godot"; Path = Get-GodotPath },
+        [pscustomobject]@{ Id = "sourcetree"; Name = "Sourcetree Enterprise"; Path = Get-SourcetreePath },
+        [pscustomobject]@{ Id = "vscode"; Name = "Visual Studio Code"; Path = Get-VSCodePath },
+        [pscustomobject]@{ Id = "antigravity"; Name = "Google Antigravity"; Path = Get-AntigravityPath },
+        [pscustomobject]@{ Id = "unity"; Name = "Unity Hub"; Path = Get-UnityHubPath },
+        [pscustomobject]@{ Id = "steam"; Name = "Steam"; Path = Get-SteamPath }
     )
 
-    foreach ($target in $targets) {
+    foreach ($target in $allTargets) {
+        if (-not (Test-LaunchSelected -Id $target.Id)) {
+            continue
+        }
+
         $resultName = "$($target.Name) launch"
 
         if (-not $target.Path) {
@@ -835,23 +1060,65 @@ function Open-InstalledApps {
 
 function Open-ChromeTabs {
     $name = "Google Chrome tabs"
-    $urls = @(
-        "https://github.co.jp/",
-        "https://www.microsoft.com/ja-jp/microsoft-teams/log-in",
-        "https://discord.com/"
-    )
+    $config = Get-ConfiguredSoftware
+    $urls = New-Object System.Collections.Generic.List[string]
+
+    if ($config.browserTabs) {
+        foreach ($tab in $config.browserTabs) {
+            if ($Script:SelectedBrowserTabIds -contains $tab.id.ToLowerInvariant()) {
+                $urls.Add($tab.url) | Out-Null
+            }
+        }
+    }
+    else {
+        foreach ($fallbackUrl in @(
+            "https://github.co.jp/",
+            "https://www.microsoft.com/ja-jp/microsoft-teams/log-in",
+            "https://discord.com/"
+        )) {
+            $urls.Add($fallbackUrl) | Out-Null
+        }
+    }
+
+    if ((Test-SoftwareSelected -Id "chatgpt") -and ($ChatGPTMode -eq "Web")) {
+        $chatgptItem = Get-SoftwareItem -Id "chatgpt"
+        $webUrl = if ($chatgptItem.webUrl) { $chatgptItem.webUrl } else { "https://chatgpt.com/" }
+        if (-not $urls.Contains($webUrl)) {
+            $urls.Add($webUrl) | Out-Null
+        }
+    }
+
+    if ($urls.Count -eq 0) {
+        Write-Log "No browser tabs selected. Skipping browser launch."
+        Add-Result $name "Skipped" "No browser tabs selected"
+        return
+    }
 
     $chromePath = Get-GoogleChromePath
-    Write-Log "Chrome URLs: $($urls -join ', ')"
+    Write-Log "Browser URLs: $($urls -join ', ')"
 
     if (-not $chromePath) {
+        if ((Test-SoftwareSelected -Id "chatgpt") -and ($ChatGPTMode -eq "Web")) {
+            Write-Log "Google Chrome was not found. Opening URLs with the default browser." "WARN"
+            if ($DryRun) {
+                Write-Log "DryRun: Default browser URLs will not be opened." "DRYRUN"
+                Add-Result $name "DryRun" "Would open $($urls.Count) URLs in default browser"
+                return
+            }
+            foreach ($u in $urls) {
+                Start-Process $u
+            }
+            Add-Result $name "LaunchRequested" "$($urls.Count) URLs in default browser"
+            return
+        }
+
         Write-Log "Google Chrome was not found. Browser tabs were not opened." "WARN"
         Add-Result $name "Skipped" "Chrome not found"
         return
     }
 
     Write-Log "Google Chrome path: $chromePath"
-    $chromeArguments = @("--new-window", "--start-maximized") + $urls
+    $chromeArguments = @("--new-window", "--start-maximized") + @($urls)
     $chromeArgumentString = $chromeArguments -join " "
     Write-Log "Chrome arguments: $chromeArgumentString"
 
@@ -866,19 +1133,44 @@ function Open-ChromeTabs {
 }
 
 function Complete-Setup {
-    Write-Log "Finishing setup in session $([Diagnostics.Process]::GetCurrentProcess().SessionId), interactive: $([Environment]::UserInteractive), administrator: $(Test-IsAdmin). SkipAppLaunches: $SkipAppLaunches SkipChromeTabs: $SkipChromeTabs"
+    Write-Log "Finishing setup in session $([Diagnostics.Process]::GetCurrentProcess().SessionId), interactive: $([Environment]::UserInteractive), administrator: $(Test-IsAdmin). SkipAppLaunches: $SkipAppLaunches SkipChromeTabs: $SkipChromeTabs ChatGPTMode: $ChatGPTMode"
+
     if ($DeferChatGPTInstall) {
-        Write-Log "ChatGPT Desktop installation is deferred to the original user process."
-        Add-Result "ChatGPT Desktop" "Deferred" "Original user process will install the app"
+        if ((Test-SoftwareSelected -Id "chatgpt") -and ($ChatGPTMode -eq "Desktop")) {
+            Write-Log "ChatGPT Desktop installation is deferred to the original user process."
+            Add-Result "ChatGPT Desktop" "Deferred" "Original user process will install the app"
+        }
+        if (Test-SoftwareSelected -Id "antigravity") {
+            Write-Log "Google Antigravity installation is deferred to the original user process."
+            Add-Result "Google Antigravity (x64/Win)" "Deferred" "Original user process will install the app"
+        }
     }
     else {
-        Invoke-SetupStep "ChatGPT Desktop installation" { Install-ChatGPTDesktop }
+        if (Test-SoftwareSelected -Id "antigravity") {
+            Invoke-SetupStep "Google Antigravity installation" { Install-WingetOrLocalApp -Id "antigravity" }
+        }
+
+        if (Test-SoftwareSelected -Id "chatgpt") {
+            if ($ChatGPTMode -eq "Desktop") {
+                Invoke-SetupStep "ChatGPT Desktop installation" { Install-ChatGPTDesktop }
+            }
+            elseif ($ChatGPTMode -eq "Web") {
+                Write-Log "ChatGPT Web mode selected. Desktop app installation skipped; Web version will be opened in browser."
+                Add-Result "ChatGPT" "Skipped" "Web mode selected (https://chatgpt.com/)"
+            }
+            else {
+                Write-Log "ChatGPTMode is None. Skipping ChatGPT."
+                Add-Result "ChatGPT" "Skipped" "Mode=None"
+            }
+        }
     }
 
     if (-not $SkipAppLaunches) {
         Invoke-SetupStep "Installed apps launch" { Open-InstalledApps }
-        if (-not ($Script:Results | Where-Object { $_.Name -eq "ChatGPT Desktop installation" -and $_.Status -eq "Failed" })) {
-            Invoke-SetupStep "ChatGPT Desktop launch" { Open-ChatGPTDesktop }
+        if ((Test-SoftwareSelected -Id "chatgpt") -and ($ChatGPTMode -eq "Desktop") -and (Test-LaunchSelected -Id "chatgpt")) {
+            if (-not ($Script:Results | Where-Object { $_.Name -eq "ChatGPT Desktop installation" -and $_.Status -eq "Failed" })) {
+                Invoke-SetupStep "ChatGPT Desktop launch" { Open-ChatGPTDesktop }
+            }
         }
     }
 
@@ -915,6 +1207,10 @@ function Initialize-Log {
     Write-Log "OS: $osInfo"
     Write-Log "PowerShell: $($PSVersionTable.PSVersion)"
     Write-Log "DryRun: $DryRun Force: $Force NoElevate: $NoElevate SkipChromeTabs: $SkipChromeTabs SkipAppLaunches: $SkipAppLaunches InstallRoot: $InstallRoot"
+    Write-Log "SelectedSoftware: $($Script:SelectedSoftwareIds -join ', ')"
+    Write-Log "SelectedLaunchApps: $($Script:SelectedLaunchAppIds -join ', ')"
+    Write-Log "SelectedBrowserTabs: $($Script:SelectedBrowserTabIds -join ', ')"
+    Write-Log "ChatGPTMode: $ChatGPTMode"
     if ($Force) {
         Write-Log "-Force was specified. Existing software is still skipped when detected."
     }
@@ -922,19 +1218,46 @@ function Initialize-Log {
 
 try {
     Set-Location -LiteralPath $Script:BaseDir
+    Initialize-Selections
     Initialize-Log
     Restart-AsAdminIfNeeded
     Assert-RequiredFiles
-    $Script:GitInstallJob = Start-GitInstallJob
-    Install-7Zip
-    Install-Godot
-    Install-Node
-    Install-CodexCli
-    Set-UserExecutionPolicy
-    Wait-GitInstallJob -Job $Script:GitInstallJob
-    $Script:GitInstallJob = $null
-    Install-SourcetreeEnterprise
-    Install-VSCode
+
+    if (Test-SoftwareSelected -Id "git") {
+        $Script:GitInstallJob = Start-GitInstallJob
+    }
+    if (Test-SoftwareSelected -Id "7zip") {
+        Install-7Zip
+    }
+    if (Test-SoftwareSelected -Id "godot") {
+        Install-Godot
+    }
+    if (Test-SoftwareSelected -Id "node") {
+        Install-Node
+    }
+    if (Test-SoftwareSelected -Id "codex") {
+        Install-CodexCli
+    }
+    if ((Test-SoftwareSelected -Id "node") -or (Test-SoftwareSelected -Id "codex")) {
+        Set-UserExecutionPolicy
+    }
+    if ($Script:GitInstallJob) {
+        Wait-GitInstallJob -Job $Script:GitInstallJob
+        $Script:GitInstallJob = $null
+    }
+    if (Test-SoftwareSelected -Id "sourcetree") {
+        Install-SourcetreeEnterprise
+    }
+    if (Test-SoftwareSelected -Id "vscode") {
+        Install-VSCode
+    }
+    if (Test-SoftwareSelected -Id "unity") {
+        Install-WingetOrLocalApp -Id "unity"
+    }
+    if (Test-SoftwareSelected -Id "steam") {
+        Install-WingetOrLocalApp -Id "steam"
+    }
+
     Complete-Setup
     Show-Summary
     Write-Log "Completed at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
