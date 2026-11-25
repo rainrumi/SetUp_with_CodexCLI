@@ -1,0 +1,244 @@
+{
+  "software": [
+    {
+      "id": "7zip",
+      "name": "7-Zip",
+      "version": "26.05 (x64)",
+      "fileName": "7z2605-x64.exe",
+      "expectedSha256": "fd99e86f57d8f429ef5ed045bf98315af962e2309b0f1ba87a147a44c71647d0",
+      "downloadUrl": "https://www.7-zip.org/download.html",
+      "installMethod": "local_installer",
+      "resourceRequired": true,
+      "defaultSelected": true,
+      "canLaunch": false,
+      "defaultLaunch": false,
+      "notes": "64-bit Windows x64 (.exe) をダウンロードし resource フォルダへ配置",
+      "detectPaths": [
+        "C:\\Program Files\\7-Zip\\7z.exe",
+        "C:\\Program Files (x86)\\7-Zip\\7z.exe"
+      ],
+      "silentArgs": ["/S"]
+    },
+    {
+      "id": "godot",
+      "name": "Godot",
+      "version": "4.7.2 stable (win64)",
+      "fileName": "Godot_v4.7.2-stable_win64.exe",
+      "expectedSha256": "ab1824f85bfd8e0e4128182c000c4003a3e042245b2967848d089b2a04b22424",
+      "downloadUrl": "https://godotengine.org/download/windows/",
+      "installMethod": "local_copy",
+      "resourceRequired": true,
+      "defaultSelected": true,
+      "canLaunch": true,
+      "defaultLaunch": true,
+      "notes": "標準版 (Standard / win64) の ZIP を展開し exe を resource フォルダへ配置",
+      "destinationRelativePath": "Godot\\Godot_v4.7.2-stable_win64.exe",
+      "detectPaths": [
+        "C:\\Tools\\Godot\\Godot_v4.7.2-stable_win64.exe"
+      ]
+    },
+    {
+      "id": "node",
+      "name": "Node.js",
+      "version": "24.22.1 LTS (x64)",
+      "fileName": "node-v24.22.1-x64.msi",
+      "expectedSha256": "3bda4baf1ee709b33cf920dd633106ddb23951e322bff9c03ec9f64ab8981b01",
+      "downloadUrl": "https://nodejs.org/en/download",
+      "installMethod": "local_installer",
+      "resourceRequired": true,
+      "defaultSelected": true,
+      "canLaunch": false,
+      "defaultLaunch": false,
+      "notes": "Windows Installer (.msi / 64-bit) を resource フォルダへ配置",
+      "detectCommands": ["node.exe", "npm.cmd"],
+      "silentArgs": ["/qn", "/norestart"]
+    },
+    {
+      "id": "git",
+      "name": "Git for Windows",
+      "version": "2.56.0.windows.4 (64-bit)",
+      "fileName": "Git-2.56.0.4-64-bit.exe",
+      "expectedSha256": "4961a4a8cc778d8b6e00a5819e5fe4d078b754555aff7aedc2d77a5d74c2de80",
+      "downloadUrl": "https://git-scm.com/install/windows",
+      "installMethod": "local_installer",
+      "resourceRequired": true,
+      "defaultSelected": true,
+      "canLaunch": false,
+      "defaultLaunch": false,
+      "notes": "64-bit Git for Windows Setup (.exe) を resource フォルダへ配置",
+      "detectCommands": ["git.exe"],
+      "detectPaths": [
+        "C:\\Program Files\\Git\\cmd\\git.exe",
+        "C:\\Program Files\\Git\\bin\\git.exe",
+        "C:\\Program Files (x86)\\Git\\cmd\\git.exe",
+        "C:\\Program Files (x86)\\Git\\bin\\git.exe"
+      ],
+      "silentArgs": ["/VERYSILENT", "/NORESTART", "/NOCANCEL", "/SP-"]
+    },
+    {
+      "id": "sourcetree",
+      "name": "Sourcetree Enterprise",
+      "version": "3.4.32 (MSI)",
+      "fileName": "SourcetreeEnterpriseSetup_3.4.32.msi",
+      "expectedSha256": "2dfeae7ab4ec6a11de12b65d2a59221d55bbb6be517dac39a493e34bac16e740",
+      "downloadUrl": "https://www.sourcetreeapp.com/enterprise",
+      "installMethod": "local_installer",
+      "resourceRequired": true,
+      "defaultSelected": true,
+      "canLaunch": true,
+      "defaultLaunch": true,
+      "notes": "Enterprise 版 MSI をダウンロードし resource フォルダへ配置",
+      "detectPaths": [
+        "C:\\Program Files\\Atlassian\\Sourcetree Enterprise\\SourceTree.exe",
+        "C:\\Program Files (x86)\\Atlassian\\Sourcetree Enterprise\\SourceTree.exe",
+        "C:\\Program Files\\Atlassian\\Sourcetree\\SourceTree.exe",
+        "C:\\Program Files (x86)\\Atlassian\\Sourcetree\\SourceTree.exe",
+        "C:\\Program Files\\SourceTree\\SourceTree.exe",
+        "C:\\Program Files (x86)\\SourceTree\\SourceTree.exe",
+        "%LOCALAPPDATA%\\SourceTree\\SourceTree.exe"
+      ],
+      "msiProperties": ["ACCEPTEULA=1"],
+      "silentArgs": ["/qn", "/norestart"]
+    },
+    {
+      "id": "vscode",
+      "name": "Visual Studio Code",
+      "version": "1.143.1 (User x64)",
+      "fileName": "VSCodeUserSetup-x64-1.143.1.exe",
+      "expectedSha256": "7cb4c13a1b20c8bba749604a28198585fc45c64a01e5c819c300a42079696519",
+      "downloadUrl": "https://code.visualstudio.com/updates",
+      "installMethod": "local_installer",
+      "resourceRequired": true,
+      "defaultSelected": true,
+      "canLaunch": true,
+      "defaultLaunch": true,
+      "notes": "Windows User Installer x64 をダウンロードし resource フォルダへ配置",
+      "detectPaths": [
+        "%LOCALAPPDATA%\\Programs\\Microsoft VS Code\\Code.exe",
+        "C:\\Program Files\\Microsoft VS Code\\Code.exe",
+        "C:\\Program Files (x86)\\Microsoft VS Code\\Code.exe"
+      ],
+      "silentArgs": [
+        "/VERYSILENT",
+        "/NORESTART",
+        "/MERGETASKS=!runcode,addcontextmenufiles,addcontextmenufolders,addtopath"
+      ]
+    },
+    {
+      "id": "codex",
+      "name": "OpenAI Codex CLI",
+      "version": "npm latest",
+      "fileName": "",
+      "expectedSha256": "",
+      "downloadUrl": "https://www.npmjs.com/package/@openai/codex",
+      "installMethod": "npm",
+      "resourceRequired": false,
+      "defaultSelected": true,
+      "canLaunch": false,
+      "defaultLaunch": false,
+      "notes": "Node.js 導入後に npm 経由で自動インストール",
+      "detectCommands": ["codex.cmd", "codex"],
+      "installCommand": "npm i -g @openai/codex@latest"
+    },
+    {
+      "id": "chatgpt",
+      "name": "ChatGPT",
+      "version": "Microsoft Store 最新 / Web版",
+      "fileName": "",
+      "downloadUrl": "https://apps.microsoft.com/detail/9PLM9XGG6VKS",
+      "webUrl": "https://chatgpt.com/",
+      "installMethod": "msstore",
+      "resourceRequired": false,
+      "defaultSelected": true,
+      "canLaunch": true,
+      "defaultLaunch": true,
+      "notes": "デスクトップ版 (Microsoft Store) または Web版 (ブラウザ) を選択可能",
+      "storeId": "9PLM9XGG6VKS",
+      "packageName": "OpenAI.Codex"
+    },
+    {
+      "id": "antigravity",
+      "name": "Google Antigravity (x64/Win)",
+      "version": "Windows x64 最新",
+      "fileName": "Antigravity IDE.exe",
+      "alternateFileNames": ["Antigravity.exe"],
+      "expectedSha256": "",
+      "downloadUrl": "https://antigravity.google/download",
+      "installMethod": "winget_or_local",
+      "wingetId": "Google.Antigravity",
+      "resourceRequired": false,
+      "defaultSelected": true,
+      "canLaunch": true,
+      "defaultLaunch": false,
+      "notes": "winget で自動取得（resource に exe を置けばローカル優先）",
+      "detectPaths": [
+        "%LOCALAPPDATA%\\Programs\\Antigravity\\Antigravity.exe",
+        "%LOCALAPPDATA%\\Programs\\Antigravity IDE\\Antigravity.exe",
+        "%LOCALAPPDATA%\\Programs\\Antigravity IDE\\Antigravity IDE.exe",
+        "C:\\Program Files\\Antigravity\\Antigravity.exe",
+        "C:\\Program Files\\Antigravity IDE\\Antigravity.exe"
+      ],
+      "silentArgs": ["/S"]
+    },
+    {
+      "id": "unity",
+      "name": "Unity Hub (x64/Win)",
+      "version": "Windows x64 最新",
+      "fileName": "UnityHubSetup.exe",
+      "expectedSha256": "",
+      "downloadUrl": "https://unity.com/download",
+      "installMethod": "winget_or_local",
+      "wingetId": "Unity.UnityHub",
+      "resourceRequired": false,
+      "defaultSelected": false,
+      "canLaunch": true,
+      "defaultLaunch": false,
+      "notes": "winget で自動取得（resource に UnityHubSetup.exe を置けばローカル優先）",
+      "detectPaths": [
+        "C:\\Program Files\\Unity Hub\\Unity Hub.exe",
+        "%LOCALAPPDATA%\\Programs\\Unity Hub\\Unity Hub.exe"
+      ],
+      "silentArgs": ["/S"]
+    },
+    {
+      "id": "steam",
+      "name": "Steam",
+      "version": "Windows 最新",
+      "fileName": "SteamSetup.exe",
+      "expectedSha256": "",
+      "downloadUrl": "https://store.steampowered.com/about/",
+      "installMethod": "winget_or_local",
+      "wingetId": "Valve.Steam",
+      "resourceRequired": false,
+      "defaultSelected": false,
+      "canLaunch": true,
+      "defaultLaunch": false,
+      "notes": "winget で自動取得（resource に SteamSetup.exe を置けばローカル優先）",
+      "detectPaths": [
+        "C:\\Program Files (x86)\\Steam\\steam.exe",
+        "C:\\Program Files\\Steam\\steam.exe"
+      ],
+      "silentArgs": ["/S"]
+    }
+  ],
+  "browserTabs": [
+    {
+      "id": "github",
+      "name": "GitHub",
+      "url": "https://github.co.jp/",
+      "defaultSelected": true
+    },
+    {
+      "id": "teams",
+      "name": "Microsoft Teams",
+      "url": "https://www.microsoft.com/ja-jp/microsoft-teams/log-in",
+      "defaultSelected": true
+    },
+    {
+      "id": "discord",
+      "name": "Discord",
+      "url": "https://discord.com/",
+      "defaultSelected": true
+    }
+  ]
+}

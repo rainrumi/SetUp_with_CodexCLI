@@ -1,2 +1,6 @@
 resource/
 logs/
+app/logs/
+app/config/gui_settings.json
+__pycache__/
+app/__pycache__/
