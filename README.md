@@ -14,7 +14,7 @@
 - **ダウンロード / インストールするソフト**（7-Zip / Godot / Node.js / Git / Sourcetree / VS Code / Codex CLI / ChatGPT / Google Antigravity / Unity Hub / Steam）
 - **ChatGPT の利用方式**（デスクトップ版を Microsoft Store から導入して起動 / Web版 `https://chatgpt.com/` をブラウザで開く）
 - **セットアップ後に展開するウィンドウ**（起動するアプリ、Chrome で開くタブ）
-- **不足ファイルの自動検知と公式ダウンロードリンク集 GUI**（`resource` フォルダに必要な exe/msi が存在しない場合、GUI 起動時に自動で別ウィンドウのリンク集が開きます）
+- **不足ファイルの確認と公式ダウンロードリンク集 GUI**（セットアップ開始時に、選択した未導入ソフトで `resource` フォルダ内のインストーラーを使用する場合に限り不足ファイルをチェックし、必要なファイルを箇条書きで確認ダイアログに表示してリンク集 GUI を開くか選択できます）
 
 Chrome が見つからない場合、タブは開かずログにスキップ理由を記録します（ただし ChatGPT Web版のみ既定ブラウザへフォールバックします）。
 
@@ -38,9 +38,9 @@ python .\app\setup_gui.py
 
 | ソフト | バージョン | 導入方法 | 公式配布元 |
 | --- | --- | --- | --- |
-| 7-Zip | 26.05 (x64) | `resource` ローカル必須 | https://www.7-zip.org/download.html |
+| 7-Zip | 26.06 (x64) | `resource` ローカル（選択導入時） | https://www.7-zip.org/download.html |
 | Godot（標準版） | 4.7.2 stable (win64) | `resource` ローカル必須（コピー配置） | https://godotengine.org/download/windows/ |
-| Node.js | 24.22.1 LTS (x64) | `resource` ローカル必須 | https://nodejs.org/en/download |
+| Node.js | 26.13.1 (x64) | `resource` ローカル（選択導入時） | https://nodejs.org/en/download |
 | Git for Windows | 2.56.0.windows.4 (64-bit) | `resource` ローカル必須 | https://git-scm.com/install/windows |
 | Sourcetree Enterprise | 3.4.32 (MSI) | `resource` ローカル必須 | https://www.sourcetreeapp.com/enterprise |
 | Visual Studio Code | 1.143.1 (User x64) | `resource` ローカル必須 | https://code.visualstudio.com/updates |
@@ -71,9 +71,9 @@ app\install_all.ps1
 app\RUN_AS_ADMIN.bat
 app\config\software.json
 app\logs\
-resource\7z2605-x64.exe
+resource\7z2606-x64.exe
 resource\Godot_v4.7.2-stable_win64.exe
-resource\node-v24.22.1-x64.msi
+resource\node-v26.13.1-x64.msi
 resource\Git-2.56.0.4-64-bit.exe
 resource\SourcetreeEnterpriseSetup_3.4.32.msi
 resource\VSCodeUserSetup-x64-1.143.1.exe
@@ -87,9 +87,9 @@ app\logs\
 
 ## 必須ファイル
 
-- `resource\7z2605-x64.exe`
+- `resource\7z2606-x64.exe`
 - `resource\Godot_v4.7.2-stable_win64.exe`
-- `resource\node-v24.22.1-x64.msi`
+- `resource\node-v26.13.1-x64.msi`
 - `resource\Git-2.56.0.4-64-bit.exe`
 - `resource\SourcetreeEnterpriseSetup_3.4.32.msi`
 - `resource\VSCodeUserSetup-x64-1.143.1.exe`
