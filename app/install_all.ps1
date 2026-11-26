@@ -36,6 +36,13 @@ $Script:GitInstallJob = $null
 $Script:SelectedSoftwareIds = @()
 $Script:SelectedLaunchAppIds = @()
 $Script:SelectedBrowserTabIds = @()
+# WinGet reports these HRESULTs as signed Int32 process exit codes.
+$Script:WingetAlreadyInstalledExitCodes = @(
+    0x8A15002B # No applicable update for the installed package
+    0x8A150061 # Package already installed
+    0x8A15010D # Another version already installed
+    0x8A15010E # A higher version already installed
+)
 
 function Write-Log {
     param(
@@ -443,6 +450,9 @@ function Invoke-ExternalProcess {
     if ($process.ExitCode -eq 3010) {
         Write-Log "Success with reboot required." "WARN"
     }
+    elseif ($process.ExitCode -eq 1641) {
+        Write-Log "Success; the installer has initiated a reboot." "WARN"
+    }
 
     return $process.ExitCode
 }
@@ -623,7 +633,7 @@ function Install-Node {
         "/norestart",
         "/L*v",
         "`"$nodeLog`""
-    ) -SuccessExitCodes @(0, 3010)
+    ) -SuccessExitCodes @(0, 1641, 3010)
 
     $env:Path = "C:\Program Files\nodejs;$env:APPDATA\npm;$env:Path"
     Write-Log "Node.js PATH candidates were added to the current session."
@@ -636,9 +646,6 @@ function Start-GitInstallJob {
     $name = "Git for Windows"
     $item = Get-SoftwareItem -Id "git"
     $installer = Find-LocalInstaller -Item $item
-    if (-not $installer) {
-        throw "$name installer was not found in resource\"
-    }
     $gitLog = Join-Path $Script:LogDir "git-install.log"
 
     Write-Log "Starting $name install in a separate background job."
@@ -695,8 +702,8 @@ function Start-GitInstallJob {
                 return [pscustomobject]@{ Name = $Name; Status = "Skipped"; Message = "Installed: $installed" }
             }
 
-            if (-not (Test-Path -LiteralPath $Installer)) {
-                throw "Git installer was not found: $Installer"
+            if (-not $Installer -or -not (Test-Path -LiteralPath $Installer)) {
+                throw "$Name installer was not found in resource\"
             }
 
             $arguments = @(
@@ -803,7 +810,7 @@ function Install-SourcetreeEnterprise {
         "/norestart",
         "/L*v",
         "`"$sourcetreeLog`""
-    ) -SuccessExitCodes @(0, 3010)
+    ) -SuccessExitCodes @(0, 1641, 3010)
     Add-Result $name "Installed" "MSI executed with ACCEPTEULA=1"
 }
 
@@ -896,10 +903,16 @@ function Install-WingetOrLocalApp {
     }
 
     try {
-        Invoke-ExternalProcess -FilePath $winget.Source -ArgumentList $arguments -SuccessExitCodes @(0, 3010) | Out-Null
+        $exitCode = Invoke-ExternalProcess -FilePath $winget.Source -ArgumentList $arguments -SuccessExitCodes (@(0, 3010) + $Script:WingetAlreadyInstalledExitCodes)
     }
     catch {
         throw "$name installation via winget failed. You can also download manually from $($item.downloadUrl). $($_.Exception.Message)"
+    }
+
+    if ($Script:WingetAlreadyInstalledExitCodes -contains $exitCode) {
+        Write-Log "$name is already installed according to winget. Skipping: $($item.wingetId)"
+        Add-Result $name "Skipped" "Already installed via winget detection ($($item.wingetId))"
+        return
     }
 
     Add-Result $name "Installed" "Installed via winget ($($item.wingetId))"
@@ -1024,14 +1037,21 @@ function Install-ChatGPTDesktop {
     }
 
     try {
-        Invoke-ExternalProcess -FilePath $winget.Source -ArgumentList $arguments | Out-Null
+        $exitCode = Invoke-ExternalProcess -FilePath $winget.Source -ArgumentList $arguments -SuccessExitCodes (@(0, 3010) + $Script:WingetAlreadyInstalledExitCodes)
     }
     catch {
         throw "ChatGPT Desktop installation failed. Check your network, Microsoft Store access, and winget diagnostic logs. $($_.Exception.Message)"
     }
-    if (-not (Get-ChatGPTPackage)) {
+    $installed = Get-ChatGPTPackage
+    if (-not $installed) {
         throw "ChatGPT Desktop was not registered for the current user after winget completed. Check Microsoft Store and run setup again."
     }
+    if ($Script:WingetAlreadyInstalledExitCodes -contains $exitCode) {
+        Write-Log "$name is already registered for the current user. Skipping: $($installed.PackageFullName)"
+        Add-Result $name "Skipped" $installed.PackageFullName
+        return
+    }
+
     Add-Result $name "Installed" "Downloaded and installed from Microsoft Store"
 }
 
